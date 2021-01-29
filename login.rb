@@ -11,8 +11,10 @@ $htur1_pub = 'homie/turret_front/turret_1/control/set'
 $htur2_pub = 'homie/turret_back/turret_1/control/set'
 $htur1_sub = 'homie/turret_font/turret_1/control'
 $htur2_sub = 'homie/turret_back/turret_1/control'
+# tracker video
+$htrkv_sub = 'homie/panel_tracker/track/control/set'
 # alarm 
-$alarm_pub= 'homie/housekeeping/switch/state'
+$alarm_pub= 'homie/trumpy_bear/control/cmd'
 $laser_cmds = {'Square': 'square', 'Circle': 'circle', 'Diamond': 'diamond', 
   'Crosshairs':'crosshairs', 'Horizontal Sweep': 'hzig', 'Vertical Sweep': 'vzig',
    'Random': 'random', 'TB Tame': 'tame', 'TB Mean': 'mean'}
@@ -97,8 +99,22 @@ Shoes.app width: 900, height: 580 do
             logout
           elsif cmd == 'tracking'
             @tgt_msg.text = hsh['msg']
-            @tgt_img.path = '/home/pi/Projects/tmp/tracking.jpg'
+            #@tgt_img.path = '/home/pi/Projects/tmp/tracking.jpg'
           end
+        end
+      elsif msg.topic == $htrkv_sub
+        $stderr.puts "got #{msg.topic} #{msg.payload}"
+        hsh = JSON.parse(msg.payload)
+        if hsh['uri'] != nil
+          uri = hsh['uri']
+          @vid_widget.path = uri
+          @vid_widget.play
+        elsif hsh['uri'] == nil
+          if @vid_widget 
+            @vid_widget.stop
+          end        
+        else
+          $stderr.puts "ignore #{msg.payload}"
         end
       elsif msg.topic == $hdspm_sub
         # display_mode command. 
@@ -122,7 +138,7 @@ Shoes.app width: 900, height: 580 do
       end
     }
     $client.subscribe([$hscn_sub, 1], [$hdspm_sub, 1], [$hdspt_sub, 1],
-      [$htur1_sub, 1], [$htur2_sub, 1]) 
+      [$htur1_sub, 1], [$htur2_sub, 1], [$htrkv_sub, 1]) 
     Thread.new do
       $client.loop_read
       sleep 0.1
@@ -211,20 +227,14 @@ Shoes.app width: 900, height: 580 do
     @panel.clear do
       stack width: 650 do
         title "Control Alarms"
-        tagline "May not work quickly or at all"
+        tagline "May not work quickly"
         # turn on/off the housekeeping switch. On means Alarm Off.
         flow do 
-          button "Turn OFF", height: 80, width: 100, margin_left: 20,
+          button "Turn OFF Alarm", height: 80, width: 100, margin_left: 20,
               font: "Menlo Bold 14" do
             $client.publish($alarm_pub, "on", false, 1)
-            # watch for looping on this
+            # watch out for looping on this. hdspt is the Display
             $client.publish($hdspt_sub, "Alarm Off", false, 1)
-          end
-           button "Turn On", height: 80, width: 100,  margin_left: 20, 
-              font: "Menlo Bold 14" do
-            $client.publish($alarm_pub, "off", false, 1)
-            # watch for looping on this
-            $client.publish($hdspt_sub, "Alarm On", false, 1)
           end
        end
       end
@@ -305,8 +315,6 @@ Shoes.app width: 900, height: 580 do
               manual_panel
             end
             button "Tracking", font: 'Sans 16', margin: 12 do
-              dt = {'cmd': 'track', 'debug': true}
-              $client.publish($hcmd_pub,dt.to_json)
               target_panel
             end
           end
@@ -420,17 +428,19 @@ Shoes.app width: 900, height: 580 do
 
   end
   
-  def target_panel
+  def target_panel(uri="")
     @panel.clear do 
+      $stderr.puts "starting target_panel with #{uri}"
+      require 'shoes/videoffi'
       stack do
-        @tgt_img = image @img.path, height: 300, width: 400, cache: false,
-            align: "center"
+        @vid_widget = video("", auto_play: false,
+            height: 300, width: 400, align: "center")
         flow do
           tagline "Messages:", margin_right: 20
           @tgt_msg = tagline "waiting.."
         end
-        button "Do Again" do
-          dt = {'cmd': 'track'}
+        button "Track Me", font: 'Sans 16', margin: 10 do
+          dt = {'cmd': 'track', 'debug': false, 'test': true}
           $client.publish($hcmd_pub,dt.to_json)
         end
       end
