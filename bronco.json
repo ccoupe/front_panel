@@ -1,0 +1,18 @@
+{
+    "mqtt_server": "192.168.1.7",
+    "mqtt_port": 1883,
+    "mqtt_client_name": "trumpy_67",
+    "homie_device": "test_bear",
+    "homie_name": "Test Bear Bronco",
+    "hscn_sub":  "homie/test_bear/screen/control/set",
+    "hcmd_pub":  "homie/test_bear/control/cmd/set",
+    "hscn_pub":  "homie/test_bear/screen/control",
+    "hdspm_sub": "homie/trumpy_ranger/display/mode/set",
+    "hdspt_sub": "homie/trumpy_ranger/display/text/set",
+    "htur1_pub": "homie/turret_front/turret_1/control/set",
+    "htur2_pub": "homie/turret_back/turret_1/control/set",
+    "htur1_sub": "homie/turret_front/turret_1/control",
+    "htur2_sub": "homie/turret_back/turret_1/control",
+    "htrkv_sub": "homie/panel_tracker/track/control/set",
+    "alarm_pub": "homie/test_bear/control/cmd"
+}

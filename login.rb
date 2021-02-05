@@ -230,7 +230,7 @@ Shoes.app width: 900, height: 580 do
         tagline "May not work quickly"
         # turn on/off the housekeeping switch. On means Alarm Off.
         flow do 
-          button "Turn OFF Alarm", height: 80, width: 100, margin_left: 20,
+          button "Alarm OFF", height: 80, width: 100, margin_left: 20,
               font: "Menlo Bold 14" do
             $client.publish($alarm_pub, "on", false, 1)
             # watch out for looping on this. hdspt is the Display
