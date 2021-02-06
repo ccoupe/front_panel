@@ -26,11 +26,12 @@ laser_btn = None
 login_btn = None
 logoff_btn = None
 panel_fr = None
-title = None
-subtitle = None
+pnl_hdr = ""
+status_hdr = ""
+msg_hdr = ""
 pnl_middle = None
-message = None
-vid_widget = None
+center_img = None
+vid_widget = None     # TODO
 turrets = None
 
 laser_cmds = {'Square': 'square', 'Circle': 'circle', 'Diamond': 'diamond', 
@@ -40,7 +41,8 @@ laser_cmds = {'Square': 'square', 'Circle': 'circle', 'Diamond': 'diamond',
 def main():
   global settings, hmqtt, log,  env_home, mq_thr
   global root,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
-  global menu_fr, panel_fr, title, subtitle, center_img, pnl_middle, message
+  global menu_fr, panel_fr, center_img, pnl_middle, message
+  global pnl_hdr, status_hdr, msg_hdr
 
   env_home = os.getenv('HOME')
   ap = argparse.ArgumentParser()
@@ -74,38 +76,54 @@ def main():
     log.fail('failed mqtt setup')
     exit()
     
-  root = Tk()
-  menu_fr = ttk.Frame(root, width=200, height=580)
-  menu_fr.pack(side=LEFT)
-  alarm_btn = Button(menu_fr, text = "Alarm", font = "Menlo 14 bold",)
-  voice_btn = Button(menu_fr, text = "Voice", font = "Menlo 14 bold")
-  laser_btn = Button(menu_fr, text = "Lasers", font = "Menlo 14 bold")
-  login_btn = Button(menu_fr, text = "Login", font = "Menlo 14 bold", 
-      command = on_login)
-  logoff_btn = Button(menu_fr, text = "Logoff", font = "Menlo 14 bold",
-      command = on_logoff)
+  root = Tk() 
+  root.geometry('900x580')
+  st = ttk.Style()
+  st.configure("Menlo.TButton", font = ('Menlo', 14, 'bold'), 
+    height=10, width=10)
   
-  panel_fr = ttk.Frame(root, width=700, height=580)
-  panel_fr.pack(side=TOP)
-  title = ttk.Label(panel_fr, text="Trumpy Bear", font="Menlo 34").pack()
-  subtitle = ttk.Label(panel_fr, text="Please Login",font="Menlo 26").pack()
-  print('type of subtitle:', type(subtitle))
-  '''
-  img1 = Image.open("images/IF-Garden.jpg")
-  img1 = img1.resize((400, 300))
-  center_img = ImageTk.PhotoImage(image=img1)
-  pnl_middle = ttk.Label(panel_fr, image=center_img)
-  pnl_middle.pack(side=TOP)
-  print('type of pnl_middle:', type(pnl_middle))
-  '''
+  content = ttk.Frame(root)
+  content.grid(rows=1, columns=2)
+  menu_fr = ttk.Frame(content, width=200, height=580, borderwidth=5)
+  st_p = 5
+  menu_fr.grid(row=st_p + 1, column=1)
+  alarm_btn = ttk.Button(menu_fr, text ="Alarm", style='Menlo.TButton', 
+      command=alarm_panel)
+  alarm_btn['state'] = 'disabled'
+  alarm_btn.grid(row=st_p + 2)
+  voice_btn = ttk.Button(menu_fr, text = "Voice", style='Menlo.TButton')
+  voice_btn.grid(row=st_p + 3)
+  voice_btn['state'] = 'disabled'
+  laser_btn = ttk.Button(menu_fr, text = "Lasers", style='Menlo.TButton')
+  laser_btn.grid(row=st_p + 4)
+  laser_btn['state'] = 'disabled'
+  login_btn = ttk.Button(menu_fr, text = "Login", style='Menlo.TButton', 
+      command = on_login)
+  login_btn.grid(row=st_p + 5)
+  logoff_btn = ttk.Button(menu_fr, text = "Logoff", style='Menlo.TButton',
+      command = on_logoff)
+  logoff_btn.grid(row=st_p + 6)
+  logoff_btn['state'] = 'disabled'
+  
+  panel_fr = ttk.Frame(content, width=700, height=580)
+  panel_fr.grid(row=1, column=2,rowspan=12, columnspan=16)
+  
+  pnl_hdr = ttk.Label(panel_fr, text="Trumpy Bear", font="Menlo 34")
+  pnl_hdr.grid(column=2, columnspan=15, row=0)
+  status_hdr = ttk.Label(panel_fr, text="Please Login",font="Menlo 26")
+  status_hdr.grid(column=4, columnspan=15, row=1)
+
   pnl_middle = home_panel()
-  pnl_middle.pack(side=TOP)
+  pnl_middle.grid(row=2, column=1, padx=20, pady=20, rowspan=14, columnspan=16)
   
   # bottom is a horizontal flow
-  f1 = ttk.Frame(panel_fr).pack(side=BOTTOM)
-  l1 = ttk.Label(f1, text="Messages: ", font="18").pack(side=LEFT)
-  message = ttk.Label(f1,text=" ", font="18").pack(side=LEFT)
-  login_btn.pack()
+  f1 = ttk.Frame(panel_fr)
+  f1.grid(rows=5, columns=8)
+  l1 = ttk.Label(f1, text="Messages: ", font="18")
+  l1.grid(column=0, row=0)
+  msg_hdr = ttk.Label(f1,text=" ", font="18")
+  msg_hdr.grid(row=0, column=1, columnspan=7)
+  #login_btn.pack()
   
   # and now, the event loops and threads
   try:
@@ -134,6 +152,8 @@ def pict_for(name):
 def on_mqtt_msg(topic, payload):
   global log, settings, vid_widget, alarm_btn, voice_btn, laser_btn
   global login_btn, logoff_btn, turrets
+  global pnl_hdr, status_hdr, msg_hdr
+
   log.info(f'on_mqtt: {topic} {payload}')
   if topic == settings.hscn_sub:
     if payload == 'wake':
@@ -151,14 +171,15 @@ def on_mqtt_msg(topic, payload):
         role = hsh['role']
         img_path = pict_for(user)
         log.info(f"{user} logged in")
+        status_hdr['text'] = f'{user} has logged in'
         # change the front picture
         set_picture(img_path)
         # hide or show the correct buttons
-        alarm_btn.pack()
-        voice_btn.pack()
-        laser_btn.pack()
-        login_btn.pack_forget()
-        logoff_btn.pack()
+        alarm_btn['state'] = '!disabled'
+        voice_btn['state'] = '!disabled'
+        laser_btn['state'] = '!disabled'
+        login_btn['state'] = 'disabled'
+        logoff_btn['state'] = '!disabled'
         dt = {'cmd': 'get_turrets'}
         hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
       elif cmd == 'set_turrets':
@@ -198,8 +219,7 @@ def on_mqtt_msg(topic, payload):
 
   elif topic == settings.hdspt_sub:
     # text command
-    #@msg.text = msg.payload
-    pass
+    msg_hdr['text'] = payload
   elif topic == settings.htur1_sub or topic == settings.htur2_sub:
     # 'OK' is a possible payload
     if msg.payload.startswith('{'):
@@ -223,17 +243,16 @@ def on_login():
 # replace pnl_middle
 def on_logoff():
   global root,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
-  global panel_fr, title ,subtitle, message
+  global panel_fr, status_hdr
   print("logging off")
-  # replace pnl_middle
-  pnl_middle = home_panel()
-  pnl_middle.pack(side=TOP)
+  set_picture(f"{env_home}/login/images/IF-Garden.jpg")
+  status_hdr['text'] = 'Please Login'
   # hide or show the correct buttons
-  alarm_btn.pack_forget()
-  voice_btn.pack_forget()
-  laser_btn.pack_forget()
-  login_btn.pack()
-  logoff_btn.pack_forget()
+  alarm_btn['state'] = 'disabled'
+  voice_btn['state'] = 'disabled'
+  laser_btn['state'] = 'disabled'
+  login_btn['state'] = '!disabled'
+  logoff_btn['state'] = 'disabled'
 
 
 def set_picture(img_path):
@@ -250,8 +269,6 @@ def home_panel():
   img1 = img1.resize((400, 300))
   center_img = ImageTk.PhotoImage(image=img1)
   pnl_middle = Label(panel_fr, image=center_img)
-  pnl_middle.pack(side=TOP)
-  print(type(pnl_middle))
   return pnl_middle
 
 def wake_up():
@@ -278,7 +295,7 @@ def keepalive():
   hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
 
 def do_register():
-  global log, settings, hmqtt, subtitle
+  global log, settings, hmqtt, status_hdr
   # unsleep screen saver
   monitor_wake()
   # tell hubitat we are working.
@@ -286,8 +303,9 @@ def do_register():
   # put Trumpybear in Register Mode
   dt = {'cmd': 'register'}
   hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
-  subtitle['text'] = "Registering"
+  status_hdr['text'] = "Registering"
 
+def 
 
 if __name__ == '__main__':
   sys.exit(main())
