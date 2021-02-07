@@ -19,18 +19,21 @@ hmqtt = None
 mq_thr = None         # Thread for mqtt loops 
 env_home = None       # env['HOME']
 root = None           # Tk root
+content = None        # First frame, contains menu_fr and panel_fr
 menu_fr = None
+panel_fr = None
 alarm_btn = None
 voice_btn = None
 laser_btn = None
 login_btn = None
 logoff_btn = None
-panel_fr = None
+# Login/Logout Frame contains:
 pnl_hdr = ""
 status_hdr = ""
-msg_hdr = ""
 pnl_middle = None
+msg_hdr = ""
 center_img = None
+#
 vid_widget = None     # TODO
 turrets = None
 
@@ -85,16 +88,18 @@ def main():
   content = ttk.Frame(root)
   content.grid(rows=1, columns=2)
   menu_fr = ttk.Frame(content, width=200, height=580, borderwidth=5)
-  st_p = 5
+  st_p = 4
   menu_fr.grid(row=st_p + 1, column=1)
   alarm_btn = ttk.Button(menu_fr, text ="Alarm", style='Menlo.TButton', 
       command=alarm_panel)
   alarm_btn['state'] = 'disabled'
   alarm_btn.grid(row=st_p + 2)
-  voice_btn = ttk.Button(menu_fr, text = "Voice", style='Menlo.TButton')
+  voice_btn = ttk.Button(menu_fr, text = "Voice", style='Menlo.TButton',
+      command=mycroft_panel)
   voice_btn.grid(row=st_p + 3)
   voice_btn['state'] = 'disabled'
-  laser_btn = ttk.Button(menu_fr, text = "Lasers", style='Menlo.TButton')
+  laser_btn = ttk.Button(menu_fr, text = "Lasers", style='Menlo.TButton',
+      command=laser_panel)
   laser_btn.grid(row=st_p + 4)
   laser_btn['state'] = 'disabled'
   login_btn = ttk.Button(menu_fr, text = "Login", style='Menlo.TButton', 
@@ -104,7 +109,8 @@ def main():
       command = on_logoff)
   logoff_btn.grid(row=st_p + 6)
   logoff_btn['state'] = 'disabled'
-  
+  start_panel(True)
+  '''
   panel_fr = ttk.Frame(content, width=700, height=580)
   panel_fr.grid(row=1, column=2,rowspan=12, columnspan=16)
   
@@ -124,7 +130,7 @@ def main():
   msg_hdr = ttk.Label(f1,text=" ", font="18")
   msg_hdr.grid(row=0, column=1, columnspan=7)
   #login_btn.pack()
-  
+  '''
   # and now, the event loops and threads
   try:
     #root.after(1, mqtt_loop)
@@ -245,7 +251,7 @@ def on_logoff():
   global root,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
   global panel_fr, status_hdr
   print("logging off")
-  set_picture(f"{env_home}/login/images/IF-Garden.jpg")
+  start_panel()
   status_hdr['text'] = 'Please Login'
   # hide or show the correct buttons
   alarm_btn['state'] = 'disabled'
@@ -304,8 +310,110 @@ def do_register():
   dt = {'cmd': 'register'}
   hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
   status_hdr['text'] = "Registering"
+  
+def start_panel(first=False):
+  global panel_fr,center_img, pnl_middle,  content
+  global pnl_hdr, status_hdr, msg_hdr 
+  if not first:
+    panel_fr.grid_forget()
+    panel_fr.destroy()
+  panel_fr = ttk.Frame(content, width=700, height=580)
+  panel_fr.grid(row=0, column=2,rowspan=12, columnspan=16)
+  
+  pnl_hdr = ttk.Label(panel_fr, text="Trumpy Bear", font="Menlo 34")
+  pnl_hdr.grid(column=2, columnspan=15, row=0)
+  status_hdr = ttk.Label(panel_fr, text="Please Login",font="Menlo 26")
+  status_hdr.grid(column=4, columnspan=15, row=1)
 
-def 
+  pnl_middle = home_panel()
+  pnl_middle.grid(row=2, column=1, padx=20, pady=20, rowspan=14, columnspan=16)
+  
+  # bottom is a horizontal flow
+  f1 = ttk.Frame(panel_fr)
+  f1.grid(rows=5, columns=8)
+  l1 = ttk.Label(f1, text="Messages: ", font="18")
+  l1.grid(column=0, row=0)
+  msg_hdr = ttk.Label(f1,text=" ", font="18")
+  msg_hdr.grid(row=0, column=1, columnspan=7)
 
+def alarm_panel():
+  # build and grid new frame
+  global panel_fr, content
+  panel_fr.grid_forget()
+  panel_fr.destroy()
+  panel_fr = panel_fr = ttk.Frame(content, width=700, height=580)
+  panel_fr.grid(row=0, column=2,rowspan=12, columnspan=16)
+  lbl = ttk.Label(panel_fr, font="Menlo 16",
+      text="You can try turning off the Alarm. Sometimes it will stop.")
+  lbl.grid(row =1, column=0, columnspan=12)
+  btn = ttk.Button(panel_fr, text="Turn Off", style='Menlo.TButton')
+  btn.grid(row=2, column=2)
+  
+def start_mycroft():
+  global hmqtt, settings
+  dt = {'cmd': 'mycroft'}
+  hmqtt.client.publish(settings.hcmd_pub,json.dumps(dt))
+  
+def mycroft_panel():
+  global panel_fr, content
+  panel_fr.grid_forget()
+  panel_fr.destroy()
+  panel_fr = panel_fr = ttk.Frame(content, width=700, height=580)
+  panel_fr.grid(row=0, column=2,rowspan=12, columnspan=16)
+  lbl = ttk.Label(panel_fr, font="Menlo 16",
+      text="You can try talking to Mycroft.")
+  lbl.grid(row =1, column=1, columnspan=12)
+  lbl2 = ttk.Label(panel_fr, font="Menlo 16",
+      text="Say 'Hey Mycroft' and wait for the beep")
+  lbl2.grid(row =2, column=1, columnspan=12)
+  btn = ttk.Button(panel_fr, text="Mycroft", style='Menlo.TButton', 
+      command=start_mycroft)
+  btn.grid(row=3, column=1)
+
+def lamp_off():
+  global hmqtt, settings
+  hmqtt.client.publish(settings.hscn_pub, "closing", False, 1)
+  
+# provides the builtin laser 'exec' routines
+# also buttons to bring up manual, calibrate and track panels.
+def laser_panel():
+  global panel_fr, content
+  panel_fr.grid_forget()
+  panel_fr.destroy()
+  panel_fr = panel_fr = ttk.Frame(content, width=700, height=580)
+  #panel_fr.grid(row=0, column=2,rowspan=12, columnspan=16)
+  panel_fr.grid(rows=20, columns=20)
+  panel_fr.grid(row=0, column=2)
+  
+  lbl1 = ttk.Label(text="Exercise The Lasers", font=('Menlo', 20))
+  lbl1.grid(row=1, column=4, columnspan=4)
+  
+  # list_box
+  #@exec = list_box items: $laser_cmds.keys,
+  #font: 'Sans 16', margin: 12, choose: 'Vertical Sweep'.to_sym
+  
+  btn_row = 9
+  lamp_btn = ttk.Button(panel_fr, text="Lamp Off", style='Menlo.TButton',
+      command=lamp_off)
+  lamp_btn.grid(column=1, row=btn_row)
+  man_btn = ttk.Button(panel_fr, text="Manual", style='Menlo.TButton',
+      command=manual_panel)
+  man_btn.grid(column=1, row=btn_row+1)
+  cal_btn = ttk.Button(panel_fr, text="Calibrate", style='Menlo.TButton',
+      command=calibrate_panel)
+  cal_btn.grid(column=1, row=btn_row+2)
+  trk_btn = ttk.Button(panel_fr, text="Tracking", style='Menlo.TButton',
+      command=tracking_panel)
+  trk_btn.grid(column=1, row=btn_row+3)
+  
+def manual_panel():
+  pass
+  
+def calibrate_panel():
+  pass
+
+def tracking_panel():
+  pass
+  
 if __name__ == '__main__':
   sys.exit(main())
