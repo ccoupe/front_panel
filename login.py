@@ -7,6 +7,7 @@ import json
 import time
 from lib.Settings import Settings
 from lib.Homie_MQTT import Homie_MQTT
+from lib.TurretSlider import TurretSlider
 import argparse
 import logging
 import logging.handlers
@@ -203,14 +204,13 @@ def on_mqtt_msg(topic, payload):
         dt = {'cmd': 'get_turrets'}
         hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
       elif cmd == 'set_turrets':
-        # TODO (re) build $turrets ary of hash
         turrets = hsh['turrets']
         log.info(turrets)
       elif cmd == 'logout':
         on_logoff()
       elif cmd == 'tracking':
         #@tgt_msg.text = hsh['msg']
-        #@tgt_img.path = '/home/pi/Projects/tmp/tracking.jpg'
+        msg_hdr[text]=hsh['msg']
         pass
       
   elif topic == settings.htrkv_sub:
@@ -529,7 +529,7 @@ def manual_panel():
       npwr = 0
     pdt = {'power':  npwr}
     hmqtt.client.publish(f"{tur['topic']}/set", json.dumps(pdt), False, 1)
-    
+  '''
   def set_pan(idx, lbl):
     global hmqtt, settings, turrets
     if idx > 0:
@@ -555,28 +555,61 @@ def manual_panel():
     pdt = {'tilt':  val}
     hmqtt.client.publish(f"{tur['topic']}/set", json.dumps(pdt), False, 1)
     return 0
-    
+  
+  # another helper. For Slider (aka Scale)
+  def mySlider(fr, inrow, col, name, scalewidth, minvalue, maxvalue, curvalue, proc):
+    pl = ttk.Label(panel_fr, text=name, style="MenloMd.TLabel")
+    pmin = ttk.Label(panel_fr, text=str(minvalue), style="MenloSm.TLabel")
+    pmax = ttk.Label(panel_fr, text=str(maxvalue), style="MenloSm.TLabel")
+    pctr = (maxvalue-minvalue) / 2 + minvalue
+    pv = ttk.Label(panel_fr, text=str(pctr), style="MenloMd.TLabel")
+    curvalue = DoubleVar(value=pctr)
+    pscl = ttk.Scale(panel_fr, orient='horizontal', from_=minvalue,
+        to=maxvalue, variable=curvalue, length=scalewidth,
+        command=lambda t=tur,s=side,p=pv: proc(s, p) )
+    pl.grid(row=inrow, column=col+1)
+    pmin.grid(row=inrow+1, column=col+0, sticky='e')
+    pscl.grid(row=inrow+1, column=col+1)
+    pmax.grid(row=inrow+1, column=col+2, sticky='w')
+    pv.grid(row=inrow+2, column=col+1)
+  '''
   side = 0
   pwr_widgets = {}
   for tur in turrets:
-    lbl = ttk.Label(panel_fr, text=tur['name'], width=12, style="MenloMd.TLabel")
-    lbl.grid(row=0, column=3+side)
+    # a frame for the turret name and radio buttons
+    rad_fr = ttk.Frame(panel_fr)
+    rad_fr.grid(row=1,column=side+1)
     
-    
-    plbl = ttk.Label(panel_fr, text="Power", width=6, style="MenloMd.TLabel")
+    lbl = ttk.Label(rad_fr, text=tur['name'], width=12, style="MenloMd.TLabel")
+    lbl.grid(row=1, column=2)
+    plbl = ttk.Label(rad_fr, text="Power", width=5, style="MenloMd.TLabel")
+    plbl.grid(row=2, column=1, sticky='e')
+    rd_fr = ttk.Frame(rad_fr)
     tur['power'] = IntVar(value=0)
-    pb1 = ttk.Radiobutton(panel_fr, text="On", variable=tur['power'], value=100, 
+    pb1 = ttk.Radiobutton(rd_fr, text="On", variable=tur['power'], value=100, 
         style = "Menlo.TRadiobutton",
         command=lambda t=tur, s=side: set_pwr(s))
-    pb0 = ttk.Radiobutton(panel_fr, text="Off", variable=tur['power'], value=0, 
+    pb0 = ttk.Radiobutton(rd_fr, text="Off", variable=tur['power'], value=0, 
         style = "Menlo.TRadiobutton",
         command=lambda t=tur,s=side: set_pwr(s))
-    #tur['power'] = 0
-    plbl.grid(row=1, column=side+2)
-    pb1.grid(row=1, column=side+1)
-    pb0.grid(row=1, column=side+3)
+    pb1.grid(row=1, column=1, sticky='e')
+    pb0.grid(row=1, column=2, sticky='w')
+    rd_fr.grid(row=2, column=2)
+    #s1 = ttk.Separator(panel_fr, orient=HORIZONTAL)
+    s1 = ttk.Label(panel_fr, text=" ")
+    s1.grid(row=2, column=1, columnspan=3)
     
-    # Pan slider and labels. 
+    pan = TurretSlider(panel_fr, "Pan", 200, tur, hmqtt)
+    pan.frame.grid(row=3,column=1+side)
+    
+    #s2 = ttk.Separator(panel_fr, orient=HORIZONTAL)
+    s2 = ttk.Label(panel_fr, text=" ")
+    s2.grid(row=4, column=1, columnspan=3)
+    
+    tilt = TurretSlider(panel_fr, "Tilt", 200, tur, hmqtt)
+    tilt.frame.grid(row=5,column=1+side)
+    side += 1
+    '''
     pl = ttk.Label(panel_fr, text="Pan", width=6, style="MenloMd.TLabel")
     pl.grid(row=2, column=side+3)
     pmin = ttk.Label(panel_fr, text=tur['pan_min'], style="MenloSm.TLabel")
@@ -590,10 +623,9 @@ def manual_panel():
     pscl = ttk.Scale(panel_fr, orient='horizontal', len=200, from_=tur['pan_min'],
         to=tur['pan_max'], variable=tur['pan_cur'], 
         command=lambda t=tur,s=side,p=pv: set_pan(s, p) )
-    #pscl.set(pctr)
     pscl.grid(row=3, column=side+3, columnspan=4)
     pv.grid(row=4, column=side+3)
-    
+
     # Tilt slider and labels.
     tctr = (tur['tilt_max']-tur['tilt_min']) / 2 + tur['tilt_min']
     tv = ttk.Label(panel_fr, text=str(tctr), style="MenloMd.TLabel");
@@ -607,14 +639,11 @@ def manual_panel():
     tscl = ttk.Scale(panel_fr, orient='horizontal', len=200, from_=tur['tilt_min'],
         to=tur['tilt_max'], variable=tur['tilt_cur'],
         command=lambda t=tur,s=side,p=tv: set_tilt(s, p))
-    #tscl.set(tctr)
     tscl.grid(row=7, column=side+3, columnspan=4)
     tv.grid(row=8, column=side+3)
-    
-    #sep = ttk.Separator(panel_fr, orient=VERTICAL)
-    #sep.grid(row=4, column=7)
-    #print(tur)
-    side += 8
+    side += 5
+    '''    
+ 
    
   
 def calibrate_panel():
