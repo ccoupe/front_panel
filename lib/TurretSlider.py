@@ -44,3 +44,5 @@ class TurretSlider:
     self.pmax.grid(row=2, column=3, sticky='w')
     self.pv.grid(row=3, column=2)
 
+  def grid(self, **kwargs):
+    self.frame.grid(**kwargs)

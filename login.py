@@ -266,6 +266,7 @@ def on_logoff():
   global root,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
   global panel_fr, status_hdr
   print("logging off")
+  lamp_off()
   start_panel()
   status_hdr['text'] = 'Please Login'
   # hide or show the correct buttons
@@ -439,7 +440,7 @@ def laser_panel():
   t = []
   for k in laser_cmds.keys():
     t.append(k)
-  lb = ttk.Combobox(panel_fr,values = t)
+  lb = ttk.Combobox(panel_fr,values = t, style= 'Menlo.TCombobox')
   lb.state(["readonly"])
   lb.set("Horizontal Sweep")
   lb.grid(row=3, column=1, sticky=W)
@@ -595,19 +596,19 @@ def manual_panel():
     pb1.grid(row=1, column=1, sticky='e')
     pb0.grid(row=1, column=2, sticky='w')
     rd_fr.grid(row=2, column=2)
-    #s1 = ttk.Separator(panel_fr, orient=HORIZONTAL)
-    s1 = ttk.Label(panel_fr, text=" ")
-    s1.grid(row=2, column=1, columnspan=3)
+    s1 = ttk.Separator(panel_fr, orient=HORIZONTAL)
+    s1.grid(row=2, column=1, columnspan=3, sticky='ew')
     
     pan = TurretSlider(panel_fr, "Pan", 200, tur, hmqtt)
-    pan.frame.grid(row=3,column=1+side)
+    #pan.frame.grid(row=3,column=1+side)
+    pan.grid(row=3,column=1+side)
     
-    #s2 = ttk.Separator(panel_fr, orient=HORIZONTAL)
-    s2 = ttk.Label(panel_fr, text=" ")
-    s2.grid(row=4, column=1, columnspan=3)
+    s2 = ttk.Separator(panel_fr, orient=HORIZONTAL)
+    s2.grid(row=4, column=1, columnspan=3, sticky='ew')
     
     tilt = TurretSlider(panel_fr, "Tilt", 200, tur, hmqtt)
-    tilt.frame.grid(row=5,column=1+side)
+    #tilt.frame.grid(row=5,column=1+side)
+    tilt.grid(row=5,column=1+side)
     side += 1
     '''
     pl = ttk.Label(panel_fr, text="Pan", width=6, style="MenloMd.TLabel")
@@ -647,37 +648,36 @@ def manual_panel():
    
   
 def calibrate_panel():
-  global hmqtt, settings, panel_fr, content, laser_cmds, turrets
-  global lb, lb3, lb4, lb5, lb6, lb7, cbox1, cbox2
+  global hmqtt, settings, panel_fr, content, center_img, pnl_middle
   lasers_off() 
   panel_fr.grid_forget()
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
   panel_fr.pack(side=RIGHT, expand=True)
   
-  '''
-  stack do
-    @tgt_img = image @img.path, height: 300, width: 400, cache: false,
-        align: "center"
-    flow do 
-      @dist_lb = list_box items: ['1', '2', '3', '4'],
-        choose: '1', font: 'Sans 16',  margin: 8
-      para "Distance from Camera", font: 'Sans 16', margin: 8
-    end
-    flow do 
-      @time_lb = list_box items: ['5', '10', '15', '20'],
-        choose: '10', font: 'Sans 16',  margin: 8
-      para "Time for sweep (seconds)", font: 'Sans 16', margin: 8
-    end
-    button "Begin", font: 'Sans 16', margin: 12 do
-        dt = {'cmd': 'calib'}
-        dt['time'] = @time_lb.text.to_i
-        dt['distance'] = @dist_lb.text.to_i
-        $client.publish($hcmd_pub,dt.to_json)
-    end 
-  '''
-  pass
+  lbl1 = ttk.Label(panel_fr, text="Calibration writes a video file!\nCamera must be trumpybear owned!", 
+      style="MenloMd.TLabel")
+  lbl1.grid(row=1,column=1)
+  lbl2 = ttk.Label(panel_fr, text="Meters from Camera", style="MenloMd.TLabel")
+  lbl2.grid(row=2,column=1)
+  cb1 = ttk.Combobox(panel_fr, values=('1', '2', '3', '4'), style= 'Menlo.TCombobox')
+  cb1.set('1')
+  cb1.grid(row=2, column=2)
+  lbl3 = ttk.Label(panel_fr, text="Sweep Time (sec)", style="MenloMd.TLabel")
+  lbl3.grid(row=3, column=1)
+  cb2 = ttk.Combobox(panel_fr, values=('5', '10', '15', '20'), style= 'Menlo.TCombobox')
+  cb2.set('10')
+  cb2.grid(row=3, column=2)
+  def do_calib():
+    dt = {'cmd': 'calib'}
+    dt['time'] = int(cb2.get())
+    dt['distance'] = int(cb1.get())
+    hmqtt.client.publish(settings.hcmd_pub,json.dumps(dt))
 
+  btn = ttk.Button(panel_fr, text="Begin", style="Menlo.TButton", 
+    command=do_calib)
+  btn.grid(row=5, column=2)
+ 
 def tracking_panel():
   global hmqtt, settings, panel_fr, content, laser_cmds, turrets
   global msg_hdr, vid_widget, vlc_instance, log
