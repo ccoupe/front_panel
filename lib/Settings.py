@@ -40,7 +40,7 @@ class Settings:
   def load_settings(self, fn):
     conf = json.load(open(fn))
 
-    self.mqtt_server = conf.get("mqtt_server_ip", "192.168.1.7")
+    self.mqtt_server = conf.get("mqtt_server_ip", "192.168.1.3")
     self.mqtt_port = conf.get("mqtt_port", 1883)
     self.mqtt_client_name = conf.get("mqtt_client_name", "trumpy_67")
     self.homie_device = conf.get('homie_device', "test_bear")
@@ -56,6 +56,16 @@ class Settings:
     self.htur2_sub = conf.get('htur2_sub', 'homie/turret_back/turret_1/control')
     self.htrkv_sub = conf.get('htrkv_sub', 'homie/panel_tracker/track/control/set')
     self.alarm_pub = conf.get('alarm_pub', 'homie/trumpy_bear/control/cmd')
+    self.notecmd_sub = conf.get('notecmd_sub', 'homie/test_display/display/cmd/set')
+    self.notetext_sub = conf.get('notetext_sub', 'homie/test_display/display/text/set')
+    self.font1 = conf.get('font1', "DejaVuSans")
+    self.font1sz = conf.get('font1sz', [24,32])
+    self.font2 = conf.get('font2', self.font1)
+    self.font2sz = conf.get('font2sz', [16,21])
+    self.font3 = conf.get('font3', self.font1)
+    self.font3sz = conf.get('font3sz', [8,16])
+    self.deflt_font = conf.get('Default_Font', 1)
+    self.stroke_fill = conf.get("stroke_fill", "white")
 
 
   def print(self):
@@ -80,6 +90,16 @@ class Settings:
     st['htur2_sub'] = self.htur2_sub
     st['htrkv_sub'] = self.htrkv_sub
     st['alarm_pub'] = self.alarm_pub
+    st['notecmd_sub'] = self.notecmd_sub
+    st['notetext_sub'] = self.notetext_sub
+    st['font1'] = self.font1
+    st['font1sz'] = self.font1sz
+    st['font2'] = self.font2
+    st['font2sz'] = self.font2sz
+    st['font3'] = self.font3
+    st['font3sz'] = self.font3sz
+    st['Default_Font'] = self.deflt_font
+    st['stroke_fill'] = self.stroke_fill
     str = json.dumps(st)
     return str
 

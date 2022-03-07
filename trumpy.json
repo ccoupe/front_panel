@@ -1,5 +1,5 @@
 {
-    "mqtt_server": "192.168.1.7",
+    "mqtt_server_ip": "stoic.local",
     "mqtt_port": 1883,
     "mqtt_client_name": "trumpy_32",
     "homie_device": "login_bear",
@@ -14,5 +14,14 @@
     "htur1_sub": "homie/turret_font/turret_1/control",
     "htur2_sub": "homie/turret_back/turret_1/control",
     "htrkv_sub": "homie/panel_tracker/track/control/set",
-    "alarm_pub": "homie/trumpy_bear/control/cmd"
+    "alarm_pub": "homie/trumpy_bear/control/cmd",
+    "notecmd_sub": "homie/trumpy_screen/display/cmd/set",
+    "notetext_sub": "homie/trumpy_screen/display/text/set",
+    "font1": "DejaVuSans",
+    "font1sz": [102 ,76],
+    "font2sz": [32,48],
+    "font3sz": [16,24],
+    "stroke_fill": "white",
+    "Default_Font": 1
+
 }

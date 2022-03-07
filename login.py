@@ -1,5 +1,6 @@
 from tkinter import *
 from tkinter import ttk
+from tkinter import font
 from PIL import Image, ImageTk
 import paho.mqtt.client as mqtt
 import sys
@@ -11,6 +12,7 @@ from lib.TurretSlider import TurretSlider
 import argparse
 import logging
 import logging.handlers
+import threading
 from threading import Lock, Thread
 import os
 import sys
@@ -22,7 +24,7 @@ settings = None
 hmqtt = None
 mq_thr = None         # Thread for mqtt 
 env_home = None       # env['HOME']
-root = None           # Tk root
+mainwin = None        # First Toplevel of root.
 content = None        # First frame, contains menu_fr and panel_fr (frames)
 menu_fr = None
 panel_fr = None
@@ -40,22 +42,41 @@ center_img = None
 vid_widget = None
 vlc_instance = None   
 turrets = None
+# merging in Screen saver - HE Notify stuff
+device = None
+saver_running = False
+devFnt = None
+font1 = None
+font2 = None
+font3 = None
+stroke_fill = 'white'
+screen_width = None
+screen_height = None
+saver_cvs = None
+lnY = []
+screen_thread = None
+saver_blank_thread = None
+scroll_thread = None
+textLines =[]
+devLns = 2
+firstLine = 0
 
 laser_cmds = {'Square': 'square', 'Circle': 'circle', 'Diamond': 'diamond', 
   'Crosshairs':'crosshairs', 'Horizontal Sweep': 'hzig', 'Vertical Sweep': 'vzig',
    'Random': 'random', 'TB Tame': 'tame', 'TB Mean': 'mean'}
    
 def do_quit():
-  global root
-  root.destroy()
+  global mainwin
+  mainwin.destroy()
   exit()
 
 def main():
   global settings, hmqtt, log,  env_home, mq_thr
-  global root,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
+  global mainwin,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
   global menu_fr, panel_fr, center_img, pnl_middle, message
   global pnl_hdr, status_hdr, msg_hdr, content
-
+  global device,saver_cvs,stroke_fill, screen_height, screen_width
+  global font1,font2,font3,devFnt
   env_home = os.getenv('HOME')
   if sys.platform == 'darwin':
     isOSX = True
@@ -72,12 +93,12 @@ def main():
   log = logging.getLogger('testbear')
   #applog.setLevel(args['log'])
   if args['syslog']:
-    applog.setLevel(logging.DEBUG)
+    log.setLevel(logging.DEBUG)
     handler = logging.handlers.SysLogHandler(address = '/dev/log')
     # formatter for syslog (no date/time or appname. Just  msg, lux, luxavg
     formatter = logging.Formatter('%(name)s-%(levelname)-5s: %(message)-30s')
     handler.setFormatter(formatter)
-    applog.addHandler(handler)
+    log.addHandler(handler)
   else:
     logging.basicConfig(level=logging.DEBUG,datefmt="%H:%M:%S",format='%(asctime)s %(levelname)-5s %(message)-40s')
 
@@ -91,9 +112,16 @@ def main():
     log.fail('failed mqtt setup')
     exit()
     
-  root = Tk() 
-  root.geometry('900x580')
-  root.protocol("WM_DELETE_WINDOW", do_quit)
+  tkroot = Tk()
+  mainwin = Toplevel(tkroot)
+  # new:
+  #root.wait_visibility(saver_cvs)
+  mainwin.wm_attributes("-topmost", True)
+  mainwin.attributes('-fullscreen', True)    # required, else ghost window on top
+  # old:
+  #root.geometry('900x580')
+
+  mainwin.protocol("WM_DELETE_WINDOW", do_quit)
   st = ttk.Style()
   st.theme_use('alt') # better than 'default', IMO
   st.configure("Menlo.TButton", font = ('Menlo', 16, 'bold'), 
@@ -117,7 +145,7 @@ def main():
   st.configure("Menlo.TCombobox", font = ('Menlo', 16), 
     height=16, width=10)
   
-  content = ttk.Frame(root)
+  content = ttk.Frame(mainwin)
   menu_fr = ttk.Frame(content, width=100, height=580, borderwidth=5)
   menu_fr.pack(side=LEFT, expand=True)
   
@@ -145,16 +173,47 @@ def main():
 
   # fill in the right side panel. 
   content.pack()
+  
+  # ----- Now the screen saver panel ---
+  device= Toplevel(tkroot)
+  
+  # Tkinter Window Configurations
+  #device.wait_visibility(saver_cvs)
+  device.wm_attributes('-alpha',1)
+  device.wm_attributes("-topmost", False)
+  #device.overrideredirect(1)
+  device.attributes('-fullscreen', True)
+  device.attributes("-zoomed", True)
+  #device.attributes("-toolwindow", 1)
+  screen_width = device.winfo_screenwidth()
+  screen_height = device.winfo_screenheight()
+  # create canvas 
+  saver_cvs = Canvas(device, background='black', borderwidth = 0)
+  saver_cvs.create_rectangle(0, 0, screen_width, screen_height, fill = 'black')
+  saver_cvs.pack(expand="yes",fill="both")
+ 
+  
+  font1 = font.Font(family=settings.font1, size=settings.font1sz[0])
+  font2 = font.Font(family=settings.font2, size=settings.font2sz[0])
+  font3 = font.Font(family=settings.font3, size=settings.font3sz[0])
+  fnt = settings.deflt_font
+  set_font(fnt)
+  stroke_fill = settings.stroke_fill
+  for seq in ['<Any-KeyPress>', '<Any-Button> ', '<Any-Motion>']:
+    device.bind_all(seq, saver_closing)
 
-  # and now, the event loops and threads
-  try:
-    #root.after(1, mqtt_loop)
-    #mq_thr = Thread(target=mqtt_loop,args=(None,))
-    log.info('Started thread for mqtt loop')
-  except:
-    log.fail('mqtt thread fail')
-    
-  root.mainloop()
+  # arrange toplevel windows
+  saver_running = False
+  device.withdraw()
+  mainwin.state('normal')
+  log.info(f'starting mainloop fg: {mainwin.state()}, bg: {device.state()}')
+  
+  # set screensaver timer
+  screen_timer_reset()
+  
+  # NOTE: mqtt messages seem to arrive just fine. Even though we
+  # don't seem to accomodate them
+  mainwin.mainloop()
   while True:
     time.sleep(10)
   
@@ -162,6 +221,60 @@ def mqtt_loop():
   global hmqtt, log
   log.info('mqtt_loop-ing')
   hmqtt.loop_start()
+  
+def screen_timer_fired():
+  # when this happens we need to bring the
+  # screen saver window to the top and
+  # hide the main window/menus
+  global saver_running,device,mainwin,log,screen_width,screen_height
+  log.info(f'screen_timer_fired()')
+  mainwin.withdraw()
+  device.state('normal')
+  device.lift(mainwin)
+  mainwin.lower()
+  saver_running = True
+  log.info(f'device: {device.state()} mainwin: {mainwin.state()}')
+ 
+# user touched/moused/keyed screen saver. Send to back
+# bring main window to top. Also set a new screen timer
+def saver_closing(event):
+  global saver_cvs, device, saver_running, mainwin
+  if saver_running and device.state() == 'normal':
+    saver_running = False
+    log.info(f'saver_closing()')
+    mainwin.lift()
+    device.lower()
+    device.withdraw()
+    mainwin.state('normal')
+    screen_timer_reset()
+    
+  
+def screen_timer_reset():
+  global screen_thread
+  if screen_thread:
+    screen_thread.cancel()
+  screen_thread = threading.Timer(120, screen_timer_fired)
+  screen_thread.start()
+  
+def saver_timer_fired():
+  global saver_cvs, saver_blank_thread, scroll_thread
+  saver_blank_thread = None
+  log.info('saver TMO fired')
+  saver_cvs.delete('all')
+  if scroll_thread:
+    scroll_thread.cancel()
+    scroll_thread = None
+
+  
+def saver_blank(secs):
+  global saver_blank_thread
+  if saver_blank_thread:
+    # reset unfired timer by canceling.
+    saver_blank_thread.cancel()
+
+  saver_blank_thread = threading.Timer(secs, saver_timer_fired)
+  saver_blank_thread.start()
+
 
 def pict_for(name):
   global env_home
@@ -174,7 +287,8 @@ def on_mqtt_msg(topic, payload):
   global log, settings, vid_widget, alarm_btn, voice_btn, laser_btn
   global login_btn, logoff_btn, turrets
   global pnl_hdr, status_hdr, msg_hdr, vlc_instance
-
+  global saver_running, textLines, devLn, scroll_thread
+  
   log.info(f'on_mqtt: {topic} {payload}')
   if topic == settings.hscn_sub:
     if payload == 'wake':
@@ -214,7 +328,7 @@ def on_mqtt_msg(topic, payload):
         pass
       
   elif topic == settings.htrkv_sub:
-    log.info(f"got #{topic} #{payload}")
+    log.info(f"got {topic} => {payload}")
     hsh = json.loads(payload)
     if hsh['uri'] != None:
       uri = hsh['uri']
@@ -224,8 +338,6 @@ def on_mqtt_msg(topic, payload):
     elif hsh['uri'] == None:
       if vid_widget:
         vid_widget.stop()
-        pass
-      end        
     else:
       log.debug(f"ignore #{payload}")
 
@@ -248,10 +360,49 @@ def on_mqtt_msg(topic, payload):
       #debug "#{dt['bounds']}"
       log.info(f"{dt['bounds']}")
       #manual_panel dt['bounds']
-      
+  #
+  # Screen Saver text and commands
+  #
+  elif topic == settings.notecmd_sub:
+    args = json.loads(payload)
+    cmd = args.get('cmd', None)
+    setargs = args.get('settings', None);
+    textargs = args.get('text')
+    if cmd: 
+      if cmd == 'on':
+        screenCmdOn(args)
+      elif cmd == 'off':
+        screenCmdOff(args)
+      elif cmd == 'update':
+        log.info('ignoring update command')
+      else:
+        log.info("invalid command")
+    elif setargs:
+      screenParseSettings(setargs)
+  elif topic == settings.notetext_sub:
+    if (saver_running == True):
+      saver_cvs.delete('all')
+      words = payload.split()
+      nln = len(lnY)       # number of lines 
+      log.info(f'nln: {nln} nwd: {words}')
+      # setup blanking timer for screensaver
+      saver_blank(5*60)
+      textLines = []
+      if scroll_thread:
+        scroll_thread.cancel()
+      needscroll = layoutLines(textLines,devLns, len(words), words)
+      if needscroll:
+        # set 1 sec timer
+        scroll_thread =  threading.Timer(1, scroll_timer_fired)
+        scroll_thread.start()
+        #log.info(f'setup scroll for {len(textLines)} lines')
+        displayLines(0, devLns, textLines)
+      else:
+        displayLines(0, devLns, textLines)
+          
 def on_login():
   global hmqtt, settings
-  global root,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
+  global menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
   global panel_fr,title,subtitle,pnl_middle,message
   print("logging in")
   # turn on the lamp
@@ -259,11 +410,12 @@ def on_login():
   time.sleep(1)   # enough time to turn on the lamp?
   dt = {'cmd': 'login'}
   hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt), False, 1)
+  screen_timer_reset()
   
 # async response from trumpy.py will arrive and
 # replace pnl_middle
 def on_logoff():
-  global root,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
+  global menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
   global panel_fr, status_hdr
   print("logging off")
   lamp_off()
@@ -299,16 +451,22 @@ def wake_up():
   log.info("Wake up runs")
   hmqtt.client.publish(settings.hscn_pub, "awake", false, 1)
   
+# Trumpy Bear needs to show, Screen saver hides.
 def monitor_wake():
-  global log, settings, hmqtt
+  global log, settings, hmqtt, saver_running
+  
   log.info("waking monitor")
-  os.system('DISPLAY=:0; xset s reset')
-
-
+  saver_closing();
+  #saver_running = False
+  #os.system('DISPLAY=:0; xset s reset')
+  
+# Trumpy Bear sleeps, Screen Saver awakens
 def monitor_sleep():
-  global log, settings, hmqtt
+  global log, settings, hmqtt, saver_running
   log.info("sleeping monitor")
-  os.system('DISPLAY=:0; xset s activate')
+  screen_timer_fired()
+  #saver_running = True
+  #os.system('DISPLAY=:0; xset s activate')
 
 
 def keepalive():
@@ -333,6 +491,7 @@ def start_panel(first=False):
   if not first:
     panel_fr.grid_forget()
     panel_fr.destroy()
+    screen_timer_reset()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
   panel_fr.pack(side=RIGHT, expand=True)
   
@@ -355,6 +514,7 @@ def start_panel(first=False):
 def alarm_panel():
   # build and grid new frame
   global panel_fr, content
+  screen_timer_reset()
   panel_fr.grid_forget()
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
@@ -372,6 +532,7 @@ def start_mycroft():
   
 def mycroft_panel():
   global panel_fr, content
+  screen_timer_reset()
   panel_fr.grid_forget()
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
@@ -427,6 +588,7 @@ def laser_panel():
   global panel_fr, content, laser_cmds, turrets
   global lb, lb3, lb4, lb5, lb6, lb7, cbox1, cbox2
   lasers_off()
+  screen_timer_reset()
   panel_fr.grid_forget()
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
@@ -512,6 +674,7 @@ def manual_panel():
   global hmqtt, settings, panel_fr, content, laser_cmds, turrets
   global lb, lb3, lb4, lb5, lb6, lb7, cbox1, cbox2
   lasers_off() 
+  screen_timer_reset()
   panel_fr.grid_forget()
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
@@ -650,6 +813,7 @@ def manual_panel():
 def calibrate_panel():
   global hmqtt, settings, panel_fr, content, center_img, pnl_middle
   lasers_off() 
+  screen_timer_reset()
   panel_fr.grid_forget()
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
@@ -681,6 +845,7 @@ def calibrate_panel():
 def tracking_panel():
   global hmqtt, settings, panel_fr, content, laser_cmds, turrets
   global msg_hdr, vid_widget, vlc_instance, log
+  screen_timer_reset()
   panel_fr.grid_forget()
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
@@ -719,6 +884,121 @@ def tracking_panel():
   btn = ttk.Button(f1, text="Track Me", style="MenloButton.TButton",
       command=send_trk)
   btn.grid(row = 1, column = 1)
+#
+# ------------------------Screensaver/notify -------
+# TODO: clean up all the globals. Make a class or two or three
+# really ugly with the scrooling and globals. Really.
+# compute some settings based on font size and screen size
+
+def screenCmdOn():
+  pass
+  
+def screenCmdOff():
+  global saver_cvs
+  saver_cvs.delete('all')
+  log.info('cmdOff')
+
+def screenParseSettings(dt):
+  global devFnt, font1, font2, font3
+  print(f'parseSettings: {dt}')
+  if dt['font']:
+    set_font(dt['font'])
+    
+
+def set_font(fnt):
+  global log, devFnt, devLnH, settings, saver_cvs
+  global screen_height, screen_width, lnY, font1, font2, font3
+  global viewPortW, devLns
+  lnY = []
+  if fnt == 2:
+    devFnt = font2
+    devLnH = devFnt.metrics()['linespace'] 
+    lns = 3
+  elif fnt == 3:
+    devFnt = font3
+    devLnH = devFnt.metrics()['linespace']
+    lns = 4
+  else:
+    devFnt = font1 
+    devLnH = devFnt.metrics()['linespace'] 
+    lns = 2
+  fw = devFnt.measure('MWTH')/4
+  lw = fw * 8;
+  vh = (lns * devLnH) 
+  yp = (screen_height-vh)/2
+  viewPortW = lw
+  for i in range(lns):
+    lnY.append(yp)
+    yp += devLnH
+  devLns = lns  # number of lines on screen. Fixed by font choice. 
+  log.info(f' {devLnH} {screen_width} X {screen_height}')
+  log.info(f'lnY: {lnY}')
+
+
+# returns True if we need to scroll 
+def layoutLines(lns, nln, nwd, words):
+  global viewPortW, devFnt, devLnH
+  lns.clear()
+  if nwd <= nln:
+    y = 0
+    for wd in words:
+      wid = devFnt.measure(text=wd)
+      lns.append(wd)
+      y += devLnH
+  else: 
+    ln = ""
+    wid = 0
+    for wd in words:
+      w = devFnt.measure(text=' ' + wd)
+      if (wid + w) > viewPortW:
+        lns.append(ln)
+        wid = 0
+        ln = ""
+      if wid == 0:
+        ln = wd
+        wid = w
+        #log.info(f'first word |{ln}|{wid}')
+      else:
+        ln = ln+' '+wd
+        wid = devFnt.measure(text=ln)
+        #log.info(f'partial |{ln}|')
+
+    # anything left over in ln ?
+    if wid > 0:
+      lns.append(ln)
+  return len(lns) > nln
+
+
+# st is index (0 based), end 1 higher  
+def displayLines(st, end, textLines):
+  global device, devLnH, firstLine,screen_width,saver_cvs,lnY
+  firstLine = st
+  saver_cvs.delete('all')
+  y = lnY[0]
+  #log.info(f'dspL {st} {end}')
+  for i in range(st, end):      
+    saver_cvs.create_text(
+      (screen_width / 2 ),
+      y, 
+      font=devFnt, fill=stroke_fill,
+      justify='center',
+      text = textLines[i])
+    y += devLnH
+
+# need to track the top line # displayed: global firstLine, 0 based.
+def scroll_timer_fired():
+  global firstLine, textLines, nlns, devLns, scroll_thread
+  #log.info(f'scroll firstLine: {firstLine}')
+  firstLine = firstLine + devLns
+  maxl = len(textLines)
+  if firstLine > maxl:
+    # at the end, roll around
+    firstLine = 0
+  end = min(firstLine + devLns, maxl)
+  displayLines(firstLine, end, textLines)
+  scroll_thread =  threading.Timer(1, scroll_timer_fired)
+  scroll_thread.start()
+
 
 if __name__ == '__main__':
   sys.exit(main())

@@ -38,7 +38,9 @@ class Homie_MQTT:
               self.settings.hdspt_sub,
               self.settings.htur1_sub,
               self.settings.htur2_sub,
-              self.settings.htrkv_sub]
+              self.settings.htrkv_sub,
+              self.settings.notecmd_sub,
+              self.settings.notetext_sub]
     self.log.debug("Homie_MQTT __init__")
     for sub in sublist:
       rc,_ = self.client.subscribe(sub)
