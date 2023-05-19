@@ -48,6 +48,7 @@ class Settings:
     self.hscn_sub = conf.get('hscn_sub', "homie/test_bear/screen/control/set")
     self.hcmd_pub = conf.get('hcmd_pub', "homie/test_bear/control/cmd/set")
     self.hscn_pub = conf.get('hscn_pub', "homie/test_bear/screen/control")
+    self.hspc_pub = conf.get('hspc_pub', "homie/test_bear/speech/contol/set"),
     self.hdspm_sub = conf.get('hdspm_sub', 'homie/trumpy_ranger/display/mode/set')
     self.hdspt_sub = conf.get('hdspt_sub', 'homie/trumpy_ranger/display/text/set')
     self.htur1_pub = conf.get('htur1_pub', 'homie/turret_front/turret_1/control/set')

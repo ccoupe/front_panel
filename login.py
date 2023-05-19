@@ -17,6 +17,7 @@ from threading import Lock, Thread
 import os
 import sys
 import vlc
+#import pulsectl
 
 # some globals
 isOSX = False
@@ -33,6 +34,10 @@ voice_btn = None
 laser_btn = None
 login_btn = None
 logoff_btn = None
+
+mic_btn = None
+mic_image = None
+mic_muted = True
 # Login/Logout Frame contains:
 pnl_hdr = ""
 status_hdr = ""
@@ -73,10 +78,11 @@ def do_quit():
 def main():
   global settings, hmqtt, log,  env_home, mq_thr
   global mainwin,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
+  global mic_btn, mic_image, mic_muted,ranger_btn
   global menu_fr, panel_fr, center_img, pnl_middle, message
   global pnl_hdr, status_hdr, msg_hdr, content
   global device,saver_cvs,stroke_fill, screen_height, screen_width
-  global font1,font2,font3,devFnt
+  global font1,font2,font3,devFnt, mic_imgs
   env_home = os.getenv('HOME')
   if sys.platform == 'darwin':
     isOSX = True
@@ -112,14 +118,17 @@ def main():
     log.fail('failed mqtt setup')
     exit()
     
+  #pulse = pulsectl.Pulse('tblogin')
+    
   tkroot = Tk()
   mainwin = Toplevel(tkroot)
   # new:
   #root.wait_visibility(saver_cvs)
   mainwin.wm_attributes("-topmost", True)
-  mainwin.attributes('-fullscreen', True)    # required, else ghost window on top
-  # old:
-  #root.geometry('900x580')
+  #mainwin.attributes('-fullscreen', True)    # required, else ghost window on top
+  # 
+  #mainwin.geometry('900x580')
+  mainwin.bind("<Escape>", lambda event:tkroot.destroy())
 
   mainwin.protocol("WM_DELETE_WINDOW", do_quit)
   st = ttk.Style()
@@ -154,7 +163,7 @@ def main():
       command=alarm_panel)
   alarm_btn['state'] = 'disabled'
   alarm_btn.grid(row=st_p + 2)
-  voice_btn = ttk.Button(menu_fr, text = "Voice", style='Menlo.TButton',
+  voice_btn = ttk.Button(menu_fr, text = "GLaDOS", style='Menlo.TButton',
       command=mycroft_panel)
   voice_btn.grid(row=st_p + 3)
   voice_btn['state'] = 'disabled'
@@ -162,13 +171,39 @@ def main():
       command=laser_panel)
   laser_btn.grid(row=st_p + 4)
   laser_btn['state'] = 'disabled'
+  ranger_btn = ttk.Button(menu_fr, text = "Ranger", style='Menlo.TButton',
+      command=ranger_panel)
+  ranger_btn.grid(row=st_p + 5)
+  ranger_btn['state'] = 'disabled'
+  #ranger_btn['state'] = '!disabled'
   login_btn = ttk.Button(menu_fr, text = "Login", style='Menlo.TButton', 
       command = on_login)
-  login_btn.grid(row=st_p + 5)
+  login_btn.grid(row=st_p + 6)
   logoff_btn = ttk.Button(menu_fr, text = "Logoff", style='Menlo.TButton',
       command = on_logoff)
-  logoff_btn.grid(row=st_p + 6)
-  logoff_btn['state'] = 'disabled'
+  logoff_btn.grid(row=st_p + 7)
+
+  # Sigh. Images and Tk 
+  mic_imgs = []
+  imgT = Image.open(f"{env_home}/login/images/microphone-red.png")
+  imgT = imgT.resize((40, 70))
+  imgPi = ImageTk.PhotoImage(image=imgT)
+  mic_imgs.append(imgPi)
+
+  imgT = Image.open(f"{env_home}/login/images/microphone-green.png")
+  imgT = imgT.resize((40, 70))
+  imgPi = ImageTk.PhotoImage(image=imgT)
+  mic_imgs.append(imgPi)
+  if mic_muted:
+    # red icon
+    micst = 0
+  else:
+    # green icon
+    micst = 1
+  #mic_btn = ttk.Label(menu_fr, image = mic_imgs[micst], )
+  mic_btn = ttk.Button(menu_fr, image = mic_imgs[micst], command = on_mute)
+  mic_btn.grid(row=st_p + 8, rowspan = 2)
+  
   start_panel(True)
 
   # fill in the right side panel. 
@@ -213,14 +248,26 @@ def main():
   
   # NOTE: mqtt messages seem to arrive just fine. Even though we
   # don't seem to accomodate them
+  log.info('starting mqtt loop')
+  mqtt_loop()
+  delay_thread = threading.Timer(1, delayed_setup)
+  delay_thread.start()
   mainwin.mainloop()
+  
   while True:
     time.sleep(10)
   
 def mqtt_loop():
   global hmqtt, log
   log.info('mqtt_loop-ing')
-  hmqtt.loop_start()
+  hmqtt.client.loop_start()
+
+def delayed_setup():
+  global hmqtt, log
+  # cmd the bridge to mute the microphone (and speaker?)
+  # TODO WHY IS hspc_pub A TUPLE?
+  log.info('force microphone and speaker off')
+  hmqtt.client.publish(settings.hspc_pub[0], "off")
   
 def screen_timer_fired():
   # when this happens we need to bring the
@@ -285,9 +332,9 @@ def pict_for(name):
   
 def on_mqtt_msg(topic, payload):
   global log, settings, vid_widget, alarm_btn, voice_btn, laser_btn
-  global login_btn, logoff_btn, turrets
+  global login_btn, logoff_btn, turrets, mic_btn, mic_imgs, ranger_btn
   global pnl_hdr, status_hdr, msg_hdr, vlc_instance
-  global saver_running, textLines, devLn, scroll_thread
+  global saver_running, textLines, devLn, scroll_thread, devLns
   
   log.info(f'on_mqtt: {topic} {payload}')
   if topic == settings.hscn_sub:
@@ -313,10 +360,18 @@ def on_mqtt_msg(topic, payload):
         alarm_btn['state'] = '!disabled'
         voice_btn['state'] = '!disabled'
         laser_btn['state'] = '!disabled'
+        ranger_btn['state'] = '!disabled'
         login_btn['state'] = 'disabled'
         logoff_btn['state'] = '!disabled'
+        mic_btn['state'] = '!disabled'
         dt = {'cmd': 'get_turrets'}
         hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
+      elif cmd == 'mic_on':
+        mic_btn.config(image=mic_imgs[1])
+        #mic_btn.image = mic_imgs[1]
+      elif cmd == 'mic_off':
+        mic_btn.config(image=mic_imgs[0])
+        #mic_btn.image = mic_imgs[0]
       elif cmd == 'set_turrets':
         turrets = hsh['turrets']
         log.info(turrets)
@@ -353,6 +408,8 @@ def on_mqtt_msg(topic, payload):
   elif topic == settings.hdspt_sub:
     # text command
     msg_hdr['text'] = payload
+    # msg_hdr.config(text=payload)
+
   elif topic == settings.htur1_sub or topic == settings.htur2_sub:
     # 'OK' is a possible payload, we ignore it.
     if payload.startswith('{'):
@@ -383,14 +440,14 @@ def on_mqtt_msg(topic, payload):
     if (saver_running == True):
       saver_cvs.delete('all')
       words = payload.split()
-      nln = len(lnY)       # number of lines 
-      log.info(f'nln: {nln} nwd: {words}')
+      nln = len(lnY)       # number of display lines 
+      #log.info(f'nln: {nln} nwd: {words}')
       # setup blanking timer for screensaver
       saver_blank(5*60)
       textLines = []
       if scroll_thread:
         scroll_thread.cancel()
-      needscroll = layoutLines(textLines,devLns, len(words), words)
+      needscroll = layoutLines(textLines, devLns, len(words), words)
       if needscroll:
         # set 1 sec timer
         scroll_thread =  threading.Timer(1, scroll_timer_fired)
@@ -399,6 +456,7 @@ def on_mqtt_msg(topic, payload):
         displayLines(0, devLns, textLines)
       else:
         displayLines(0, devLns, textLines)
+    # Display msg in bottom panel ?
           
 def on_login():
   global hmqtt, settings
@@ -415,8 +473,8 @@ def on_login():
 # async response from trumpy.py will arrive and
 # replace pnl_middle
 def on_logoff():
-  global menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
-  global panel_fr, status_hdr
+  global menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn,ranger_btn
+  global panel_fr, status_hdr, mic_muted, mic_btn,settings,hmqtt
   print("logging off")
   lamp_off()
   start_panel()
@@ -425,9 +483,15 @@ def on_logoff():
   alarm_btn['state'] = 'disabled'
   voice_btn['state'] = 'disabled'
   laser_btn['state'] = 'disabled'
+  ranger_btn['state'] = 'disabled'
   login_btn['state'] = '!disabled'
   logoff_btn['state'] = 'disabled'
-
+  mic_btn['state'] = 'disabled'
+  # disable da mic icon - turn off - via the bridge
+  topic = settings.hspc_pub[0]
+  hmqtt.client.publish(topic, "off")
+  mic_muted = True
+  
 
 def set_picture(img_path):
   global panel_fr, center_img, pnl_middle
@@ -487,11 +551,12 @@ def do_register():
   
 def start_panel(first=False):
   global panel_fr,center_img, pnl_middle,  content
-  global pnl_hdr, status_hdr, msg_hdr 
+  global pnl_hdr, status_hdr, msg_hdr
   if not first:
     panel_fr.grid_forget()
     panel_fr.destroy()
     screen_timer_reset()
+
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
   panel_fr.pack(side=RIGHT, expand=True)
   
@@ -529,7 +594,27 @@ def start_mycroft():
   global hmqtt, settings
   dt = {'cmd': 'mycroft'}
   hmqtt.client.publish(settings.hcmd_pub,json.dumps(dt))
+
+# glados control runs on the bridge.py process: homie.../speech/control/set
+# TODO why is their a tuple?
+def start_glados():
+  global hmqtt, settings
+  hmqtt.client.publish(settings.hspc_pub[0],'chat')
   
+def stop_glados():
+  # good luck stopping her
+  # talk to the bridge, not trumpy bear
+# TODO why is that a tuple?
+  global hmqtt, settings
+  hmqtt.client.publish(settings.hspc_pub[0],'stop')
+
+def quit_glados():
+  # I can't quit her
+  # talk to the bridge, not trumpy bear
+# TODO why is that a tuple?
+  global hmqtt, settings
+  hmqtt.client.publish(settings.hspc_pub[0],'quit')
+
 def mycroft_panel():
   global panel_fr, content
   screen_timer_reset()
@@ -538,14 +623,21 @@ def mycroft_panel():
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
   panel_fr.pack(side=RIGHT, expand=True)
   lbl = ttk.Label(panel_fr, style="MenloMd.TLabel",
-      text="You can try talking to Mycroft.")
+      text="You can try talking to GLaDos after she acknowledges you.")
   lbl.grid(row =1, column=1, columnspan=12)
   lbl2 = ttk.Label(panel_fr, style="MenloMd.TLabel",
-      text="Say 'Hey Mycroft' and wait for the beep")
+      text="Talk when the microphone icon is Green")
   lbl2.grid(row =2, column=1, columnspan=12)
-  btn = ttk.Button(panel_fr, text="Mycroft", style='Menlo.TButton', 
-      command=start_mycroft)
+  btn = ttk.Button(panel_fr, text="GLaDos", style='Menlo.TButton', 
+      command=start_glados)
   btn.grid(row=3, column=1)
+  stop_btn = ttk.Button(panel_fr, text="Stop", style='Menlo.TButton', 
+      command=stop_glados)
+  stop_btn.grid(row=3, column=2)
+  quit_btn = ttk.Button(panel_fr, text="Quit", style='Menlo.TButton', 
+      command=quit_glados)
+  quit_btn.grid(row=3, column=3)
+  start_glados()
 
 def lamp_off():
   global hmqtt, settings
@@ -557,6 +649,21 @@ def lasers_off():
     pdt = {'power':  0}
     hmqtt.client.publish(f"{tur['topic']}/set", json.dumps(pdt), False, 1)
    
+def on_mute():
+  # Button pushed - change the image and global var
+  # TODO: why is hspc_pub a tuple? 
+  global settings, hmqtt,mic_muted
+  topic = settings.hspc_pub[0]
+  if mic_muted:
+    # if muted  (mic off) then unmute (which is mute off)
+    print(f"SENDING mute off to {topic}")
+    hmqtt.client.publish(topic, "off")
+    mic_muted = False
+  else:
+    print(f"SENDING mute on to {topic}")
+    hmqtt.client.publish(topic, "on")
+    mic_muted = True
+
   
 # hackish but why bother to do better? 
 def do_exec():
@@ -773,42 +880,49 @@ def manual_panel():
     #tilt.frame.grid(row=5,column=1+side)
     tilt.grid(row=5,column=1+side)
     side += 1
-    '''
-    pl = ttk.Label(panel_fr, text="Pan", width=6, style="MenloMd.TLabel")
-    pl.grid(row=2, column=side+3)
-    pmin = ttk.Label(panel_fr, text=tur['pan_min'], style="MenloSm.TLabel")
-    pmax = ttk.Label(panel_fr, text=tur['pan_max'], style="MenloSm.TLabel")
-    pmin.grid(row=3, column=side+2, sticky='e')
-    pmax.grid(row=3, column=side+7)
-    
-    pctr = (tur['pan_max']-tur['pan_min']) / 2 + tur['pan_min']
-    pv = ttk.Label(panel_fr, text=str(pctr), style="MenloMd.TLabel")
-    tur['pan_cur'] = DoubleVar(value=pctr)
-    pscl = ttk.Scale(panel_fr, orient='horizontal', len=200, from_=tur['pan_min'],
-        to=tur['pan_max'], variable=tur['pan_cur'], 
-        command=lambda t=tur,s=side,p=pv: set_pan(s, p) )
-    pscl.grid(row=3, column=side+3, columnspan=4)
-    pv.grid(row=4, column=side+3)
 
-    # Tilt slider and labels.
-    tctr = (tur['tilt_max']-tur['tilt_min']) / 2 + tur['tilt_min']
-    tv = ttk.Label(panel_fr, text=str(tctr), style="MenloMd.TLabel");
-    tur['tilt_cur'] = DoubleVar(value=tctr)
-    tl = ttk.Label(panel_fr, text="Tilt", width=6, style="MenloMd.TLabel")
-    tl.grid(row=6, column=side+3)
-    tmin = ttk.Label(panel_fr, text=tur['tilt_min'], style="MenloSm.TLabel")
-    tmax = ttk.Label(panel_fr, text=tur['tilt_max'], style="MenloSm.TLabel")
-    tmin.grid(row=7, column=side+2, sticky='e')
-    tmax.grid(row=7, column=side+7)
-    tscl = ttk.Scale(panel_fr, orient='horizontal', len=200, from_=tur['tilt_min'],
-        to=tur['tilt_max'], variable=tur['tilt_cur'],
-        command=lambda t=tur,s=side,p=tv: set_tilt(s, p))
-    tscl.grid(row=7, column=side+3, columnspan=4)
-    tv.grid(row=8, column=side+3)
-    side += 5
-    '''    
+
+def ranger_panel():
+  global hmqtt, settings, panel_fr, content, center_img, pnl_middle 
+  global msg_hdr
+  panel_fr.grid_forget()
+  panel_fr.destroy()
+  panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
+  panel_fr.pack(side=RIGHT, expand=True)
+  
+  lbl1 = ttk.Label(panel_fr, text="Ranger Calibration", 
+      style="MenloMd.TLabel")
+  lbl1.grid(row=1,column=1)
+  lbl2 = ttk.Label(panel_fr, text="Meters from Camera", style="MenloMd.TLabel")
+  lbl2.grid(row=2,column=1)
+  cb1 = ttk.Combobox(panel_fr, values=('1', '2', '3', '4'), style= 'Menlo.TCombobox')
+  cb1.set('1')
+  cb1.grid(row=2, column=2)
+  lbl3 = ttk.Label(panel_fr, text="Delay Time (sec)", style="MenloMd.TLabel")
+  lbl3.grid(row=3, column=1)
+  cb2 = ttk.Combobox(panel_fr, values=('1', '2', '3'), style= 'Menlo.TCombobox')
+  cb2.set('1')
+  cb2.grid(row=3, column=2)
+  
+  # bottom is a horizontal flow
+  f1 = ttk.Frame(panel_fr)
+  f1.grid(rows=5, columns=8,sticky=S)
+  l1 = ttk.Label(f1, text="Messages: ", style="MenloMd.TLabel")
+  l1.grid(column=1, row=1, sticky=S)
+  msg_hdr = ttk.Label(f1, text="Here", style="MenloMd.TLabel")
+  msg_hdr.grid(row=2, column=1, columnspan=7, sticky=S)
  
-   
+  
+  def do_calib():
+    dt = {'cmd': 'ranger_test'}
+    dt['delay'] = int(cb2.get())
+    dt['distance'] = int(cb1.get())
+    hmqtt.client.publish(settings.hcmd_pub,json.dumps(dt))
+      
+  btn = ttk.Button(panel_fr, text="Begin", style="Menlo.TButton", 
+    command=do_calib)
+  btn.grid(row=5, column=2)  
+  
   
 def calibrate_panel():
   global hmqtt, settings, panel_fr, content, center_img, pnl_middle
@@ -884,6 +998,8 @@ def tracking_panel():
   btn = ttk.Button(f1, text="Track Me", style="MenloButton.TButton",
       command=send_trk)
   btn.grid(row = 1, column = 1)
+  
+  
 #
 # ------------------------Screensaver/notify -------
 # TODO: clean up all the globals. Make a class or two or three
@@ -939,6 +1055,7 @@ def set_font(fnt):
 def layoutLines(lns, nln, nwd, words):
   global viewPortW, devFnt, devLnH
   lns.clear()
+  #log.info(f'layoutLines nln: {nln}, nwd: {nwd}, words: {words}')
   if nwd <= nln:
     y = 0
     for wd in words:
@@ -956,7 +1073,8 @@ def layoutLines(lns, nln, nwd, words):
         ln = ""
       if wid == 0:
         ln = wd
-        wid = w
+        wid = devFnt.measure(text=ln)
+        #wid = w
         #log.info(f'first word |{ln}|{wid}')
       else:
         ln = ln+' '+wd
@@ -975,8 +1093,9 @@ def displayLines(st, end, textLines):
   firstLine = st
   saver_cvs.delete('all')
   y = lnY[0]
-  #log.info(f'dspL {st} {end}')
-  for i in range(st, end):      
+  #log.info(f'displayLines st: {st} end: {end}')
+  # bug from layoutlines() is fixed up here with the min()
+  for i in range(st, min(len(textLines), end)):      
     saver_cvs.create_text(
       (screen_width / 2 ),
       y, 
@@ -999,6 +1118,7 @@ def scroll_timer_fired():
   scroll_thread =  threading.Timer(1, scroll_timer_fired)
   scroll_thread.start()
 
+  
 
 if __name__ == '__main__':
   sys.exit(main())
