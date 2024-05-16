@@ -2,8 +2,8 @@
 Description=Trumpy Bear Login
 [Service]
 Environment=DISPLAY=:0.0
-Environment=XAUTHORITY=/home/pi/.Xauthority
-ExecStart=/usr/local/bin/trumpylogin.sh
+Environment=XAUTHORITY=/home/ccoupe/.Xauthority
+ExecStart=/usr/local/lib/tblogin/login.sh
 Restart=on-abort
 
 [Install]

@@ -1,6 +1,9 @@
 from tkinter import *
 from tkinter import ttk
 from tkinter import font
+from tkinter import scrolledtext 
+import tkinter as tk
+
 from PIL import Image, ImageTk
 import paho.mqtt.client as mqtt
 import sys
@@ -20,53 +23,73 @@ import vlc
 #import pulsectl
 
 # some globals
-isOSX = False
-settings = None
-hmqtt = None
-mq_thr = None         # Thread for mqtt 
-env_home = None       # env['HOME']
-mainwin = None        # First Toplevel of root.
-content = None        # First frame, contains menu_fr and panel_fr (frames)
-menu_fr = None
-panel_fr = None
-alarm_btn = None
-voice_btn = None
-laser_btn = None
-login_btn = None
-logoff_btn = None
+isOSX: bool = False
+settings: Settings = None
+hmqtt: Homie_MQTT = None
+env_home: str = None       # env['HOME'] (/home/ccoupe)
+os_home: str = None        # where this script started (/usr/local/lib/tblogin)
+mainwin: Toplevel = None        # First Toplevel of root.
+content: ttk.Frame = None    # First frame, contains menu_fr and panel_fr (frames)
+menu_fr: ttk.Frame = None
+panel_fr: ttk.Frame = None
+alarm_btn: ttk.Button = None
+voice_btn: ttk.Button = None
+laser_btn: ttk.Button = None
+login_btn: ttk.Button = None
+logoff_btn: ttk.Button = None
 
-mic_btn = None
-mic_image = None
-mic_muted = True
+mic_btn: ttk.Button = None
+mic_image: list[ImageTk.PhotoImage] = []
+mic_muted: bool = True
 # Login/Logout Frame contains:
-pnl_hdr = ""
-status_hdr = ""
-pnl_middle = None
-msg_hdr = ""
-center_img = None
-vid_widget = None
-vlc_instance = None   
-turrets = None
-# merging in Screen saver - HE Notify stuff
-device = None
-saver_running = False
-devFnt = None
-font1 = None
-font2 = None
-font3 = None
-stroke_fill = 'white'
-screen_width = None
-screen_height = None
-saver_cvs = None
-lnY = []
-screen_thread = None
-saver_blank_thread = None
-scroll_thread = None
-textLines =[]
-devLns = 2
-firstLine = 0
+pnl_hdr: str = ""
+status_hdr: str = ""
+pnl_middle: Label = None  # actually, a picture in a Label, see
+# center_image
+center_img: ImageTk.PhotoImage = None
+msg_hdr: str = ""
 
-laser_cmds = {'Square': 'square', 'Circle': 'circle', 'Diamond': 'diamond', 
+# We can use VLC to show a mjpeg stream
+vlc_instance: vlc.Instance = None
+vid_widget: vlc.Instance = None
+
+# Warning Turrets have a bit of ugliness. OK, maybe a lot of ugly.
+turrets: list[str] = None
+lb: ttk.Combobox = None
+lb3: ttk.Combobox = None
+lb4: ttk.Combobox = None
+lb5: ttk.Combobox = None
+lb6: ttk.Combobox = None
+lb7: ttk.Combobox = None
+cbox1: BooleanVar = None
+cbox2: BooleanVar = None
+
+# merging in Screen saver - HE Notify stuff
+# Yes device seems like a bad name until you know where that code
+# was before.
+device: Toplevel = None
+saver_running: bool = False
+devFnt: font.Font = None
+font1: font.Font = None
+font2: font.Font = None
+font3: font.Font = None
+stroke_fill: str = 'white'
+screen_width: int = None
+screen_height: int = None
+saver_cvs: Canvas = None
+lnY: list[int] = []
+screen_thread: threading.Timer = None
+saver_blank_thread: threading.Timer = None
+scroll_thread: threading.Timer = None
+textLines: list[str] = None
+devLns: int = 2
+firstLine: int = 0
+llm_combobx: ttk.Combobox = None
+llm_models: list[str] = []
+llm_default: str = "No Model"
+glados_initialized: bool = False
+
+laser_cmds: dict[str, str] = {'Square': 'square', 'Circle': 'circle', 'Diamond': 'diamond', 
   'Crosshairs':'crosshairs', 'Horizontal Sweep': 'hzig', 'Vertical Sweep': 'vzig',
    'Random': 'random', 'TB Tame': 'tame', 'TB Mean': 'mean'}
    
@@ -76,14 +99,13 @@ def do_quit():
   exit()
 
 def main():
-  global settings, hmqtt, log,  env_home, mq_thr
+  global settings, hmqtt, log,  env_home, os_home
   global mainwin,menu_fr,alarm_btn,voice_btn,laser_btn,login_btn,logoff_btn
   global mic_btn, mic_image, mic_muted,ranger_btn
   global menu_fr, panel_fr, center_img, pnl_middle, message
   global pnl_hdr, status_hdr, msg_hdr, content
   global device,saver_cvs,stroke_fill, screen_height, screen_width
-  global font1,font2,font3,devFnt, mic_imgs
-  env_home = os.getenv('HOME')
+  global font1,font2,font3,devFnt, mic_imgs, llm_models
   if sys.platform == 'darwin':
     isOSX = True
     print('Darwin not really supported')
@@ -96,18 +118,21 @@ def main():
   args = vars(ap.parse_args())
   
   # logging setup
-  log = logging.getLogger('testbear')
+  log = logging.getLogger('tblogin')
   #applog.setLevel(args['log'])
   if args['syslog']:
-    log.setLevel(logging.DEBUG)
+    log.setLevel(logging.INFO)
     handler = logging.handlers.SysLogHandler(address = '/dev/log')
     # formatter for syslog (no date/time or appname. Just  msg, lux, luxavg
     formatter = logging.Formatter('%(name)s-%(levelname)-5s: %(message)-30s')
     handler.setFormatter(formatter)
     log.addHandler(handler)
   else:
-    logging.basicConfig(level=logging.DEBUG,datefmt="%H:%M:%S",format='%(asctime)s %(levelname)-5s %(message)-40s')
+    logging.basicConfig(level=logging.INFO,datefmt="%H:%M:%S",format='%(asctime)s %(levelname)-5s %(message)-40s')
 
+  env_home = os.getenv('HOME')
+  os_home = os.getcwd()
+  
   settings = Settings(args["conf"], 
                       log)
   settings.print()
@@ -117,7 +142,7 @@ def main():
   except:
     log.fail('failed mqtt setup')
     exit()
-    
+  
   #pulse = pulsectl.Pulse('tblogin')
     
   tkroot = Tk()
@@ -125,8 +150,8 @@ def main():
   # new:
   #root.wait_visibility(saver_cvs)
   mainwin.wm_attributes("-topmost", True)
-  #mainwin.attributes('-fullscreen', True)    # required, else ghost window on top
-  # 
+  if settings.fullscreen:
+    mainwin.attributes('-fullscreen', True)    # required, else ghost window on top
   #mainwin.geometry('900x580')
   mainwin.bind("<Escape>", lambda event:tkroot.destroy())
 
@@ -144,7 +169,7 @@ def main():
   st = ttk.Style()
   st.configure("MenloMd.TLabel", font = ('Menlo', 16))
   st = ttk.Style()
-  st.configure("MenloMd.TLabel", font = ('Menlo', 18))
+  st.configure("MenloLg.TLabel", font = ('Menlo', 18))
   
   st = ttk.Style()
   st.configure("Menlo.TCheckbutton", font = ('Menlo', 16), 
@@ -159,50 +184,75 @@ def main():
   menu_fr.pack(side=LEFT, expand=True)
   
   st_p = 4
-  alarm_btn = ttk.Button(menu_fr, text ="Alarm", style='Menlo.TButton', 
-      command=alarm_panel)
-  alarm_btn['state'] = 'disabled'
-  alarm_btn.grid(row=st_p + 2)
-  voice_btn = ttk.Button(menu_fr, text = "GLaDOS", style='Menlo.TButton',
-      command=mycroft_panel)
-  voice_btn.grid(row=st_p + 3)
-  voice_btn['state'] = 'disabled'
-  laser_btn = ttk.Button(menu_fr, text = "Lasers", style='Menlo.TButton',
-      command=laser_panel)
-  laser_btn.grid(row=st_p + 4)
-  laser_btn['state'] = 'disabled'
-  ranger_btn = ttk.Button(menu_fr, text = "Ranger", style='Menlo.TButton',
-      command=ranger_panel)
-  ranger_btn.grid(row=st_p + 5)
-  ranger_btn['state'] = 'disabled'
-  #ranger_btn['state'] = '!disabled'
-  login_btn = ttk.Button(menu_fr, text = "Login", style='Menlo.TButton', 
-      command = on_login)
-  login_btn.grid(row=st_p + 6)
-  logoff_btn = ttk.Button(menu_fr, text = "Logoff", style='Menlo.TButton',
-      command = on_logoff)
-  logoff_btn.grid(row=st_p + 7)
+  if settings.have_alarm is True:
+    alarm_btn = ttk.Button(menu_fr, text ="Alarm", style='Menlo.TButton', 
+        command=alarm_panel)
+    alarm_btn['state'] = 'disabled'
+    alarm_btn.grid(row=st_p + 2)
+  if settings.chatbot is True:
+    voice_btn = ttk.Button(menu_fr, text = "GLaDOS", style='Menlo.TButton',
+        command=glados_click)
+    voice_btn.grid(row=st_p + 3)
+    if settings.have_login is True:
+      voice_btn['state'] = 'disabled'
+    else:
+      voice_btn['state'] = 'enabled'
+  if settings.turrets is True:
+    laser_btn = ttk.Button(menu_fr, text = "Lasers", style='Menlo.TButton',
+        command=laser_panel)
+    laser_btn.grid(row=st_p + 4)
+    laser_btn['state'] = 'disabled'
+  if settings.camera is True:
+    ranger_btn = ttk.Button(menu_fr, text = "Ranger", style='Menlo.TButton',
+        command=ranger_panel)
+    ranger_btn.grid(row=st_p + 5)
+    ranger_btn['state'] = 'disabled'
+    #ranger_btn['state'] = '!disabled'
+  if settings.have_login is True:
+    login_btn = ttk.Button(menu_fr, text = "Login", style='Menlo.TButton', 
+        command = on_login)
+    login_btn.grid(row=st_p + 6)
+    logoff_btn = ttk.Button(menu_fr, text = "Logoff", style='Menlo.TButton',
+        command = on_logoff)
+    logoff_btn.grid(row=st_p + 7)
 
-  # Sigh. Images and Tk 
-  mic_imgs = []
-  imgT = Image.open(f"{env_home}/login/images/microphone-red.png")
-  imgT = imgT.resize((40, 70))
-  imgPi = ImageTk.PhotoImage(image=imgT)
-  mic_imgs.append(imgPi)
+  if settings.chatbot:
+    # Sigh. Images and Tk 
+    mic_imgs = []
+    imgT = Image.open(f"{os_home}/images/microphone-red.png")
+    imgT = imgT.resize((40, 70))
+    imgPi = ImageTk.PhotoImage(image=imgT)
+    mic_imgs.append(imgPi)
+  
+    imgT = Image.open(f"{os_home}/images/microphone-green.png")
+    imgT = imgT.resize((40, 70))
+    imgPi = ImageTk.PhotoImage(image=imgT)
+    mic_imgs.append(imgPi)
+    
+    imgT = Image.open(f"{os_home}/images/microphone-orange.png")
+    imgT = imgT.resize((40, 70))
+    imgPi = ImageTk.PhotoImage(image=imgT)
+    mic_imgs.append(imgPi)
 
-  imgT = Image.open(f"{env_home}/login/images/microphone-green.png")
-  imgT = imgT.resize((40, 70))
-  imgPi = ImageTk.PhotoImage(image=imgT)
-  mic_imgs.append(imgPi)
-  if mic_muted:
-    # red icon
-    micst = 0
-  else:
-    # green icon
-    micst = 1
-  #mic_btn = ttk.Label(menu_fr, image = mic_imgs[micst], )
-  mic_btn = ttk.Button(menu_fr, image = mic_imgs[micst], command = on_mute)
-  mic_btn.grid(row=st_p + 8, rowspan = 2)
+    imgT = Image.open(f"{os_home}/images/microphone-yellow.png")
+    imgT = imgT.resize((40, 70))
+    imgPi = ImageTk.PhotoImage(image=imgT)
+    mic_imgs.append(imgPi)
+
+    imgT = Image.open(f"{os_home}/images/microphone-blue.png")
+    imgT = imgT.resize((40, 70))
+    imgPi = ImageTk.PhotoImage(image=imgT)
+    mic_imgs.append(imgPi)
+
+    if mic_muted:
+      # red icon
+      micst = 0
+    else:
+      # green icon
+      micst = 1
+    #mic_btn = ttk.Label(menu_fr, image = mic_imgs[micst], )
+    mic_btn = ttk.Button(menu_fr, image = mic_imgs[micst], command = on_mute)
+    mic_btn.grid(row=st_p + 8, rowspan = 2)
   
   start_panel(True)
 
@@ -268,7 +318,15 @@ def delayed_setup():
   # TODO WHY IS hspc_pub A TUPLE?
   log.info('force microphone and speaker off')
   hmqtt.client.publish(settings.hspc_pub[0], "off")
+  # ask the bridge process for a list of llm model names
+  llm_models_list()
   
+def llm_models_list():
+  global hmqtt, log
+  # cmd the bridge to send a list of llm model names
+  log.info('give me llm_models_list')
+  hmqtt.client.publish(settings.hspc_pub[0], '{"cmd": "llm_models"}')
+   
 def screen_timer_fired():
   # when this happens we need to bring the
   # screen saver window to the top and
@@ -329,8 +387,36 @@ def pict_for(name):
   fps.sort()
   print('found:', fps[-1])
   return f'{env_home}/.trumpybear/{name}/face/{fps[-1]}'
+
+# There are lots of visual clues to show the state. Red means don't talk
+# Green means talk. 
+# The cursor should change to busy when chatting and speaking
+# Or maybe you have red and green leds - you could flash one for chatting
+# Lots of possibilities.  
+'''
+  idle = 0        # Red
+  listening = 1   # Green
+  chatting = 2    # Yellow - i.e. waiting for chatbot to send the answer
+  speaking = 3    # Orange
+'''
+def show_bridge_state(st: int) -> None:
+  global mainwin, mic_btn, mic_imgs
+  if st == 0:
+    mic_btn.config(image=mic_imgs[0])
+    mainwin.config(cursor="")
+  elif st == 1:
+    mic_btn.config(image=mic_imgs[1])
+    mainwin.config(cursor="")
+  elif st == 2:
+    mic_btn.config(image=mic_imgs[2])
+    mainwin.config(cursor="watch")
+  elif st == 3:
+    mic_btn.config(image=mic_imgs[3])
+    mainwin.config(cursor="watch")
+      
   
-def on_mqtt_msg(topic, payload):
+
+def on_mqtt_msg(topic: str, payload: str) -> None:
   global log, settings, vid_widget, alarm_btn, voice_btn, laser_btn
   global login_btn, logoff_btn, turrets, mic_btn, mic_imgs, ranger_btn
   global pnl_hdr, status_hdr, msg_hdr, vlc_instance
@@ -366,12 +452,31 @@ def on_mqtt_msg(topic, payload):
         mic_btn['state'] = '!disabled'
         dt = {'cmd': 'get_turrets'}
         hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
-      elif cmd == 'mic_on':
-        mic_btn.config(image=mic_imgs[1])
-        #mic_btn.image = mic_imgs[1]
-      elif cmd == 'mic_off':
-        mic_btn.config(image=mic_imgs[0])
-        #mic_btn.image = mic_imgs[0]
+      elif cmd == "reply":
+        # Put list into a global for use by a widget.
+        global llm_models, llm_default
+        llm_models = hsh.get('llm_models', None)
+        llm_default = hsh.get('llm_default', None)
+        log.info(f'Recv LLM models list: {llm_models}')
+      elif cmd == 'write_screen':
+        # sigh. We are going to need some globals for the text widget
+        # insertion point, color.... If only we could have more globals.
+        global msgArea
+        msg = hsh.get('text','[nothing]')
+        highlight = hsh.get('answer', False)
+        if highlight:
+          msg = "\n ------ GLaDOS ------\n" + msg
+        else:
+          msg = "\n ------ You ---------\n" + msg
+        msgArea.insert(tk.END, msg)
+        msgArea.see(tk.END)
+        # reset the screen saver.
+        screen_timer_reset()
+        # Always amazing what you can get away with in Tk if you don't know
+        # or care what thread you are on
+      elif cmd == 'bridge_machine':
+        st = hsh.get('state', None)
+        show_bridge_state(st)
       elif cmd == 'set_turrets':
         turrets = hsh['turrets']
         log.info(turrets)
@@ -501,9 +606,9 @@ def set_picture(img_path):
   pnl_middle['image'] = center_img
 
   
-def home_panel():
-  global panel_fr,center_img, pnl_middle, env_home
-  img1 = Image.open(f"{env_home}/login/images/IF-Garden.jpg")
+def home_panel() -> Label:
+  global panel_fr,center_img, pnl_middle, os_home
+  img1 = Image.open(f"{os_home}/images/IF-Garden.jpg")
   img1 = img1.resize((400, 300))
   center_img = ImageTk.PhotoImage(image=img1)
   pnl_middle = Label(panel_fr, image=center_img)
@@ -600,23 +705,39 @@ def start_mycroft():
 def start_glados():
   global hmqtt, settings
   hmqtt.client.publish(settings.hspc_pub[0],'chat')
+  screen_timer_reset() 
   
 def stop_glados():
   # good luck stopping her
   # talk to the bridge, not trumpy bear
-# TODO why is that a tuple?
+  # TODO why is that a tuple?
   global hmqtt, settings
   hmqtt.client.publish(settings.hspc_pub[0],'stop')
 
 def quit_glados():
-  # I can't quit her
+  # BST (Al Kooper): I can't quit her
   # talk to the bridge, not trumpy bear
-# TODO why is that a tuple?
+  # TODO why settings.hspc_pub a tuple?
   global hmqtt, settings
   hmqtt.client.publish(settings.hspc_pub[0],'quit')
 
-def mycroft_panel():
-  global panel_fr, content
+# Called when the GLaDOS button is pressed. If the panel is not setup
+# the do so. Either way, tell the bridge process that there was a click.
+#
+def glados_click():
+  global glados_initialized
+  if glados_initialized is False:
+    glados_initialized = True
+    glados_panel()
+  else:
+    stop_glados()
+    time.sleep(0.1)
+    start_glados()
+
+# Setup the GUI Widgets for the GLaDOS panel
+#
+def glados_panel():
+  global panel_fr, content, llm_models, llm_default, llm_combobx, msgArea
   screen_timer_reset()
   panel_fr.grid_forget()
   panel_fr.destroy()
@@ -626,17 +747,39 @@ def mycroft_panel():
       text="You can try talking to GLaDos after she acknowledges you.")
   lbl.grid(row =1, column=1, columnspan=12)
   lbl2 = ttk.Label(panel_fr, style="MenloMd.TLabel",
-      text="Talk when the microphone icon is Green")
+      text="Talk when the microphone icon is Green. Click mic button")
   lbl2.grid(row =2, column=1, columnspan=12)
-  btn = ttk.Button(panel_fr, text="GLaDos", style='Menlo.TButton', 
-      command=start_glados)
-  btn.grid(row=3, column=1)
+
   stop_btn = ttk.Button(panel_fr, text="Stop", style='Menlo.TButton', 
       command=stop_glados)
   stop_btn.grid(row=3, column=2)
-  quit_btn = ttk.Button(panel_fr, text="Quit", style='Menlo.TButton', 
-      command=quit_glados)
-  quit_btn.grid(row=3, column=3)
+
+  # drop down list 
+  def tell_bridge(self):
+    llm_name = llm_combobx.get()
+    log.info(f'Tell bridge to change model to {llm_name}')
+    jstr = json.dumps({"cmd": "llm_default", "model": llm_name})
+    # TODO another fix about that hspc_pub tuple issue
+    hmqtt.client.publish(settings.hspc_pub[0], jstr, False, 1)
+    
+  lbl3 = ttk.Label(panel_fr, style="MenloSm.TLabel",
+      text="LLM Model:")
+  lbl3.grid(row=4, column=1)
+  llm_combobx = ttk.Combobox(panel_fr, state="readonly", values=llm_models)
+  llm_combobx.grid(row=4, column=2, columnspan=2)
+  llm_combobx.set(llm_default)
+  llm_combobx.bind("<<ComboboxSelected>>", tell_bridge)
+
+    
+  # text area for display of messages to/from llm. Also a scrollbar.
+  msgArea = scrolledtext.ScrolledText(panel_fr,  
+                                      wrap = tk.WORD,  
+                                      width = 60,  
+                                      height = 20,  
+                                      font = ("Menlo", 
+                                              12)) 
+  msgArea.grid(row=5, column=1, pady = 10, padx = 10)
+  glados_initialized = True
   start_glados()
 
 def lamp_off():
@@ -800,50 +943,7 @@ def manual_panel():
       npwr = 0
     pdt = {'power':  npwr}
     hmqtt.client.publish(f"{tur['topic']}/set", json.dumps(pdt), False, 1)
-  '''
-  def set_pan(idx, lbl):
-    global hmqtt, settings, turrets
-    if idx > 0:
-      idx=1
-    tur = turrets[idx]
-    nm = tur['name']
-    val = round(tur['pan_cur'].get(), 1)
-    #print(nm, val)
-    lbl['text']=str(val)
-    pdt = {'pan':  val}
-    hmqtt.client.publish(f"{tur['topic']}/set", json.dumps(pdt), False, 1)
-    return 0
-    
-  def set_tilt(idx, lbl):
-    global hmqtt, settings, turrets
-    if idx > 0:
-      idx=1
-    tur = turrets[idx]
-    nm = tur['name']
-    val = round(tur['tilt_cur'].get(), 1)
-    #print(nm, val)
-    lbl['text']=str(val)
-    pdt = {'tilt':  val}
-    hmqtt.client.publish(f"{tur['topic']}/set", json.dumps(pdt), False, 1)
-    return 0
-  
-  # another helper. For Slider (aka Scale)
-  def mySlider(fr, inrow, col, name, scalewidth, minvalue, maxvalue, curvalue, proc):
-    pl = ttk.Label(panel_fr, text=name, style="MenloMd.TLabel")
-    pmin = ttk.Label(panel_fr, text=str(minvalue), style="MenloSm.TLabel")
-    pmax = ttk.Label(panel_fr, text=str(maxvalue), style="MenloSm.TLabel")
-    pctr = (maxvalue-minvalue) / 2 + minvalue
-    pv = ttk.Label(panel_fr, text=str(pctr), style="MenloMd.TLabel")
-    curvalue = DoubleVar(value=pctr)
-    pscl = ttk.Scale(panel_fr, orient='horizontal', from_=minvalue,
-        to=maxvalue, variable=curvalue, length=scalewidth,
-        command=lambda t=tur,s=side,p=pv: proc(s, p) )
-    pl.grid(row=inrow, column=col+1)
-    pmin.grid(row=inrow+1, column=col+0, sticky='e')
-    pscl.grid(row=inrow+1, column=col+1)
-    pmax.grid(row=inrow+1, column=col+2, sticky='w')
-    pv.grid(row=inrow+2, column=col+1)
-  '''
+
   side = 0
   pwr_widgets = {}
   for tur in turrets:

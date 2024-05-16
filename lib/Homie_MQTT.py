@@ -16,7 +16,7 @@ class Homie_MQTT:
     self.callback = callback
     
     # init server connection
-    self.client = mqtt.Client(settings.mqtt_client_name, False)
+    self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, settings.mqtt_client_name, False)
     #self.client.max_queued_messages_set(3)
     hdevice = self.hdevice = self.settings.homie_device  # "device_name"
     hlname = self.hlname = self.settings.homie_name     # "Display Name"

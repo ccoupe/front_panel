@@ -67,6 +67,13 @@ class Settings:
     self.font3sz = conf.get('font3sz', [8,16])
     self.deflt_font = conf.get('Default_Font', 1)
     self.stroke_fill = conf.get("stroke_fill", "white")
+    self.have_alarm = conf.get("have_alarm", True)
+    self.turrets = conf.get("have_turrets", True)  # TODO: Really?
+    self.fullscreen = conf.get("fullscreen", True) # TODO Really?
+    self.notify = conf.get("have_notify", True)
+    self.chatbot = conf.get("have_chatbot", True)
+    self.camera = conf.get("have_camera", True)
+    self.have_login = conf.get("have_login", True)
 
 
   def print(self):
