@@ -21,6 +21,9 @@ import os
 import sys
 import vlc
 #import pulsectl
+from gpiozero import Button as GpioButton
+from gpiozero import LED as GpioLED
+
 
 # some globals
 isOSX: bool = False
@@ -37,7 +40,6 @@ voice_btn: ttk.Button = None
 laser_btn: ttk.Button = None
 login_btn: ttk.Button = None
 logoff_btn: ttk.Button = None
-
 mic_btn: ttk.Button = None
 mic_image: list[ImageTk.PhotoImage] = []
 mic_muted: bool = True
@@ -88,6 +90,10 @@ llm_combobx: ttk.Combobox = None
 llm_models: list[str] = []
 llm_default: str = "No Model"
 glados_initialized: bool = False
+# we might also have real button and LED hardware
+gpio_btn =  None
+red_led = None
+green_led = None
 
 laser_cmds: dict[str, str] = {'Square': 'square', 'Circle': 'circle', 'Diamond': 'diamond', 
   'Crosshairs':'crosshairs', 'Horizontal Sweep': 'hzig', 'Vertical Sweep': 'vzig',
@@ -106,6 +112,8 @@ def main():
   global pnl_hdr, status_hdr, msg_hdr, content
   global device,saver_cvs,stroke_fill, screen_height, screen_width
   global font1,font2,font3,devFnt, mic_imgs, llm_models
+  global gpio_btn, red_led, green_led
+
   if sys.platform == 'darwin':
     isOSX = True
     print('Darwin not really supported')
@@ -136,6 +144,14 @@ def main():
   settings = Settings(args["conf"], 
                       log)
   settings.print()
+  
+  if settings.have_button:
+	  gpio_btn_pin = GpioButton(pin=settings.button_pin, bounce_time=0.01)
+	  gpio_btn_pin.when_pressed = glados_click
+	  
+  if settings.have_leds:
+	  red_led = GpioLED(settings.led_red_pin)
+	  green_led = GpioLED(settings.led_green_pin)
 
   try:
     hmqtt = Homie_MQTT(settings, on_mqtt_msg)
@@ -400,19 +416,27 @@ def pict_for(name):
   speaking = 3    # Orange
 '''
 def show_bridge_state(st: int) -> None:
-  global mainwin, mic_btn, mic_imgs
+  global mainwin, mic_btn, mic_imgs, green_led, red_led
   if st == 0:
     mic_btn.config(image=mic_imgs[0])
     mainwin.config(cursor="")
+    red_led.off()
+    green_led.off()
   elif st == 1:
     mic_btn.config(image=mic_imgs[1])
     mainwin.config(cursor="")
+    green_led.on()
+    red_led.off()
   elif st == 2:
     mic_btn.config(image=mic_imgs[2])
     mainwin.config(cursor="watch")
+    red_led.blink(on_time=0.25, off_time=0.25, background=True)
+    green_led.blink(on_time=0.33, off_time=0.33, background=True)
   elif st == 3:
     mic_btn.config(image=mic_imgs[3])
     mainwin.config(cursor="watch")
+    red_led.on()
+    green_led.off()
       
   
 
@@ -714,12 +738,14 @@ def stop_glados():
   global hmqtt, settings
   hmqtt.client.publish(settings.hspc_pub[0],'stop')
 
+'''
 def quit_glados():
   # BST (Al Kooper): I can't quit her
   # talk to the bridge, not trumpy bear
   # TODO why settings.hspc_pub a tuple?
   global hmqtt, settings
   hmqtt.client.publish(settings.hspc_pub[0],'quit')
+'''
 
 # Called when the GLaDOS button is pressed. If the panel is not setup
 # the do so. Either way, tell the bridge process that there was a click.

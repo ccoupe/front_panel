@@ -74,6 +74,11 @@ class Settings:
     self.chatbot = conf.get("have_chatbot", True)
     self.camera = conf.get("have_camera", True)
     self.have_login = conf.get("have_login", True)
+    self.have_button = conf.get("have_button", False)
+    self.button_pin = conf.get("button_pin", None)
+    self.have_leds = conf.get("have_leds", False)
+    self.led_red_pin = conf.get("red_pin", None)
+    self.led_green_pin = conf.get("green_pin", None)
 
 
   def print(self):

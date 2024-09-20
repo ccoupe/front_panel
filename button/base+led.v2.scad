@@ -19,7 +19,7 @@ fl = "/home/ccoupe/Projects/3d/Portal/Button/base-normal-v1.stl";
     union() {
         // Cut hole under switch
         translate([-8.5, -4, chan_base-2]) {
-            cube([17.8, 22.8, 8]);
+            cube([17.8, 29.8, 10]);
         }
         
         // Left LED, Chamber, wire channels
@@ -31,8 +31,8 @@ fl = "/home/ccoupe/Projects/3d/Portal/Button/base-normal-v1.stl";
             cylinder(r=led_r+0.5, h=5);
         }
         // Chamber
-        translate([-22,12,chan_base-2]) {
-            cube([14,15,10]);
+        translate([-23,9,chan_base-2]) {
+            cube([16,17,10]);
         }
         translate([-10,18,chan_base]) {
             rotate([0,90,0]) {
@@ -47,8 +47,9 @@ fl = "/home/ccoupe/Projects/3d/Portal/Button/base-normal-v1.stl";
         translate([20, 19, chan_base+4]) {
             cylinder(r=led_r+0.5, h=5);
         }
-        translate([8,12,chan_base-2]) {
-            cube([14,15,10]);
+        // Chamber
+        translate([8,9,chan_base-2]) {
+            cube([16,17,10]);
         }
         translate([2,18,chan_base]) {
             rotate([0,90,0]) {
@@ -60,13 +61,13 @@ fl = "/home/ccoupe/Projects/3d/Portal/Button/base-normal-v1.stl";
             cube([2,6,10]);
         }
         // More room for the Right LED under deck
-        translate([21.5,16.5,chan_base-2]) {
+        #translate([21.5,16.5,chan_base-2]) {
             cube([2,6,10]);
         }
         // Exit hole
-        translate([0,16.5,chan_base]) {
+        translate([0,-36.5,chan_base]) {
             rotate([-90]) {
-                cylinder(r=3, h=20);
+                cylinder(r=4, h=80);
             }
         }
     } 

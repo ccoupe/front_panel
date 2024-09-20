@@ -1,10 +1,8 @@
 [Unit]
 Description=Trumpy Bear Login
 [Service]
-Environment=DISPLAY=:0.0
-Environment=XAUTHORITY=/home/ccoupe/.Xauthority
-ExecStart=/usr/local/lib/tblogin/login.sh
+ExecStart=/usr/local/lib/tblogin/tblogin.sh
 Restart=on-abort
 
 [Install]
-WantedBy=multi-user.target
+After=xdg-desktop-autostart.target
