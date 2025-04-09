@@ -40,7 +40,7 @@ setup_dir:
 	sed  s!PYENV!${PYENV}! <${SRCDIR}/launch.sh >$(DESTDIR)/$(LAUNCH)
 	sudo chmod +x ${DESTDIR}/${LAUNCH}
 	mkdir -p $(HOME)/.config/systemd/user
-	cp ${DESTDIR}/${SERVICE} ${HOME}/.config/systemd/user
+	sudo cp ${DESTDIR}/${SERVICE} /etc/xdg/systemd/user
 	systemctl --user enable ${SERVICE}
 	systemctl --user daemon-reload
 	systemctl --user restart ${SERVICE}
@@ -52,6 +52,11 @@ update:
 	sudo cp ${SRCDIR}/lib/TurretSlider.py ${DESTDIR}/lib
 	sudo cp ${SRCDIR}/lib/Settings.py ${DESTDIR}/lib
 	sudo cp ${SRCDIR}/login.py ${DESTDIR}
+	sudo cp ${SRCDIR}/${NODE}.json ${DESTDIR}
+	sudo cp ${SRCDIR}/${SERVICE} ${DESTDIR}
+	sudo chown -R ${USER} ${DESTDIR}
+
+
 
 clean: 
 	systemctl --user stop ${SERVICE}

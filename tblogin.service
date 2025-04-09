@@ -1,8 +1,10 @@
 [Unit]
 Description=Trumpy Bear Login
+After=trumpybear.service
 [Service]
 ExecStart=/usr/local/lib/tblogin/tblogin.sh
 Restart=on-abort
 
 [Install]
-After=xdg-desktop-autostart.target
+#After=xdg-desktop-autostart.target
+WantedBy=trumpybear.service
