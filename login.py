@@ -9,9 +9,9 @@ from PIL import Image, ImageTk
 import sys
 import json
 import time
-from lib.Settings import Settings
-from lib.Homie_MQTT import Homie_MQTT
-from lib.TurretSlider import TurretSlider
+from Settings import Settings
+from Homie_MQTT import Homie_MQTT
+from TurretSlider import TurretSlider
 import argparse
 import logging
 import logging.handlers
@@ -108,6 +108,9 @@ laser_cmds: dict[str, str] = {'Square': 'square',
                               'TB Tame': 'tame',
                               'TB Mean': 'mean'}
 
+if os.environ.get('DISPLAY','') == '':
+    print('no display found. Using :0.0')
+    os.environ.__setitem__('DISPLAY', ':0.0')
 
 def do_quit():
   global mainwin
@@ -1148,11 +1151,11 @@ def ranger_panel():
   l1.grid(row=5, column=1)
   
   ranger_calib_fld = ttk.Label(panel_fr, text="000", style="MenloMd.TLabel")
-  ranger_calib_fld.grid(row=5, column=2, columnspan=5, sticky=ttk.S)
+  ranger_calib_fld.grid(row=5, column=2, columnspan=5, sticky=tk.S)
   
   # bottom is a horizontal flow
   f1 = ttk.Frame(panel_fr)
-  f1.grid(rows=5, columns=8, sticky=ttk.S)
+  f1.grid(rows=5, columns=8, sticky=tk.S)
  
   def do_calib():
     dt = {'cmd': 'ranger_test'}

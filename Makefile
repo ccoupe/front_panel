@@ -3,7 +3,7 @@
 #
 PRJ ?= login
 DESTDIR ?= /usr/local/lib/tblogin
-SRCDIR ?= $(HOME)/Projects/iot/login
+SRCDIR ?= $(HOME)/Projects/iot/tblogin
 LAUNCH ?= tblogin.sh
 SERVICE ?=tb$(PRJ).service
 PYENV ?= ${DESTDIR}/tb-env
@@ -48,9 +48,9 @@ setup_dir:
 install: ${PYENV} setup_dir update setup_launch
 
 update: 
-	sudo cp ${SRCDIR}/lib/Homie_MQTT.py ${DESTDIR}/lib
-	sudo cp ${SRCDIR}/lib/TurretSlider.py ${DESTDIR}/lib
-	sudo cp ${SRCDIR}/lib/Settings.py ${DESTDIR}/lib
+	sudo cp ${SRCDIR}/Homie_MQTT.py ${DESTDIR}
+	sudo cp ${SRCDIR}/TurretSlider.py ${DESTDIR}
+	sudo cp ${SRCDIR}/Settings.py ${DESTDIR}
 	sudo cp ${SRCDIR}/login.py ${DESTDIR}
 	sudo cp ${SRCDIR}/${NODE}.json ${DESTDIR}
 	sudo cp ${SRCDIR}/${SERVICE} ${DESTDIR}

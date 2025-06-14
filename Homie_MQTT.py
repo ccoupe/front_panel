@@ -15,9 +15,11 @@ class Homie_MQTT:
     self.log = settings.log
     self.callback = callback
     
-    # init server connection
+    # init server connection - clean_session=bool
+    #self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
+    #                         settings.mqtt_client_name, False)
     self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                              settings.mqtt_client_name, False)
+                              settings.mqtt_client_name, True)
     # self.client.max_queued_messages_set(3)
     self.hdevice = self.settings.homie_device  # "device_name"
     self.hlname = self.settings.homie_name     # "Display Name"
@@ -25,6 +27,9 @@ class Homie_MQTT:
 
     self.client.on_message = self.on_message
     self.client.on_disconnect = self.on_disconnect
+    #self.client.on_subscribe = self.on_subscribe
+    #self.client.on_connect = self.on_connect
+    
     rc = self.client.connect(settings.mqtt_server, settings.mqtt_port)
     if rc != mqtt.MQTT_ERR_SUCCESS:
         self.log.warn("network missing?")

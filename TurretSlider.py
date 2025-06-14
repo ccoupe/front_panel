@@ -1,6 +1,6 @@
 # from tkinter import *
 from tkinter import ttk
-from lib.Homie_MQTT import Homie_MQTT
+from Homie_MQTT import Homie_MQTT
 # import sys
 import json
 
