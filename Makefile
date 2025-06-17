@@ -1,26 +1,26 @@
 #
 # Makefile for 'alarm' aka mqttalarm
 #
-PRJ ?= login
+PRJ ?= tblogin
 DESTDIR ?= /usr/local/lib/tblogin
 SRCDIR ?= $(HOME)/Projects/iot/tblogin
 LAUNCH ?= tblogin.sh
-SERVICE ?=tb$(PRJ).service
-PYENV ?= ${DESTDIR}/venv
+SERVICE ?=$(PRJ).service
+PYENV ?= ${DESTDIR}/.venv
 
 NODE := $(shell hostname)
 SHELL := /bin/bash 
 
-${PYENV}:
-	sudo mkdir -p ${PYENV}
-	sudo chown ${USER} ${PYENV}
+${PYENV}: ${SRCDIR}/requirements.txt
+	sudo mkdir -p ${DESTDIR}
+	sudo chown ${USER} ${DESTDIR}
+	sudo cp ${SRCDIR}/pyproject.toml ${DESTDIR}
+	uv python pin 3.11.2
+	uv venv --system-site-packages ${PYENV}
+	source ${PYENV}/bin/activate
+	uv python pin 3.11.2
 	sudo apt-get install python3-pil python3-pil.imagetk
-	python3 -m venv --system-site-packages ${PYENV}
-	( \
-	set -e ;\
-	source ${PYENV}/bin/activate; \
-	pip install -r $(SRCDIR)/requirements.txt; \
-	)
+	uv add -r $(SRCDIR)/requirements.txt
 
 setup_launch:
 	systemctl --user enable ${SERVICE}
