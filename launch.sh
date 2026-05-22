@@ -3,4 +3,4 @@ nm-online
 source PYENV/bin/activate
 NODE=`hostname`
 cd /usr/local/lib/tblogin
-uv run main.py -s -c ${NODE}.json
+python3 login.py -s -c ${NODE}.json

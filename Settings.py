@@ -37,7 +37,7 @@ class Settings:
     self.load_settings(self.etcfname)
     self.status_topic = 'homie/' + self.homie_device + '/control/cmd'
     self.log.info("Settings from %s" % self.etcfname)
-    
+
   def load_settings(self, fn):
     conf = json.load(open(fn))
 
@@ -81,11 +81,17 @@ class Settings:
     self.have_leds = conf.get("have_leds", False)
     self.led_red_pin = conf.get("red_pin", None)
     self.led_green_pin = conf.get("green_pin", None)
+    self.have_sayodev = conf.get("have_sayodev")
+    self.sayodev = conf.get('sayodev', None)
+    self.fc_frigate = conf.get('fc_frigate', 'frig-fc/face_recog')
+    self.from_camera = conf.get("from_camera", None)
+    self.use_homeauto = conf.get("use_homeauto", False)
+
 
   def print(self):
     self.log.info("==== Settings ====")
     self.log.info(self.settings_serialize())
-  
+
   def settings_serialize(self):
     st = {}
     st['mqtt_server_ip'] = self.mqtt_server
@@ -114,6 +120,13 @@ class Settings:
     st['font3sz'] = self.font3sz
     st['Default_Font'] = self.deflt_font
     st['stroke_fill'] = self.stroke_fill
+    st["red_pin"] = self.led_red_pin
+    st["green_pin"] = self.led_green_pin
+    st["have_sayodev"] = self.have_sayodev
+    st['sayodev'] = self.sayodev
+    st['fc_frigate'] =self.fc_frigate
+    st["from_camera"] = self.from_camera
+    st["use_homeauto"] = self.use_homeauto
     str = json.dumps(st)
     return str
 

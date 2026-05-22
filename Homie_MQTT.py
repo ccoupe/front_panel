@@ -14,7 +14,7 @@ class Homie_MQTT:
     self.settings = settings
     self.log = settings.log
     self.callback = callback
-    
+
     # init server connection - clean_session=bool
     #self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
     #                         settings.mqtt_client_name, False)
@@ -29,7 +29,7 @@ class Homie_MQTT:
     self.client.on_disconnect = self.on_disconnect
     #self.client.on_subscribe = self.on_subscribe
     #self.client.on_connect = self.on_connect
-    
+
     rc = self.client.connect(settings.mqtt_server, settings.mqtt_port)
     if rc != mqtt.MQTT_ERR_SUCCESS:
         self.log.warn("network missing?")
@@ -47,13 +47,17 @@ class Homie_MQTT:
                self.settings.notecmd_sub,
                self.settings.notetext_sub]
     self.log.debug("Homie_MQTT __init__")
+    if self.settings.sayodev is not None:
+        sublist.append(self.settings.sayodev)
+    if self.settings.fc_frigate is not None:
+        sublist.append(self.settings.fc_frigate)
     for sub in sublist:
       rc, _ = self.client.subscribe(sub)
       if rc != mqtt.MQTT_ERR_SUCCESS:
-        self.log.warn(f"Subscribe to {sub} failed: {rc}")
+        self.log.info(f"Subscribe to {sub} failed: {rc}")
       else:
-        self.log.debug(f"Init() Subscribed to {sub}")
-    
+        self.log.info(f"Init() Subscribed to {sub}")
+
   def on_subscribe(self, client, userdata, mid, granted_qos):
     self.log.debug("Subscribed to %s" % self.hurl_sub)
 
@@ -64,7 +68,7 @@ class Homie_MQTT:
     self.log.debug("on_message %s %s" % (topic, payload))
     cb_thr = Thread(target=self.callback, args=(topic, payload))
     cb_thr.start()
-    
+
   def isConnected(self):
     return self.mqtt_connected
 
@@ -81,7 +85,7 @@ class Homie_MQTT:
     else:
       self.log.debug("Failed to connect: %d" % rc)
     self.log.debug("leaving on_connect")
-       
+
   def on_disconnect(self, client, userdata, rc):
     self.mqtt_connected = False
     self.log.debug("mqtt reconnecting")

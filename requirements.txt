@@ -11,6 +11,7 @@ pipewire_python
 pyaudio
 ollama
 gpiozero
+lgpio
 pillow
 
 

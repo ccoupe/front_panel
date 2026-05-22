@@ -1,3 +1,4 @@
+from timeit import Timer
 # from tkinter import *
 from tkinter import ttk
 from tkinter import font
@@ -97,6 +98,10 @@ glados_initialized: bool = False
 gpio_btn = None
 red_led = None
 green_led = None
+login_maybe = ""
+login_thread: threading.Timer = None
+logged_in: bool = False
+
 
 laser_cmds: dict[str, str] = {'Square': 'square',
                               'Circle': 'circle',
@@ -137,7 +142,7 @@ def main():
                   default=False, help="use syslog")
 
   args = vars(ap.parse_args())
-  
+
   # logging setup
   log = logging.getLogger('tblogin')
   # applog.setLevel(args['log'])
@@ -154,30 +159,38 @@ def main():
 
   env_home = os.getenv('HOME')
   os_home = os.getcwd()
-  
+
   settings = Settings(args["conf"], log)
   settings.print()
-  
-  if settings.have_button:
-    gpio_btn_pin = GpioButton(pin=settings.button_pin, bounce_time=0.01)
-    gpio_btn_pin.when_pressed = glados_click
-  
-  if settings.have_leds:
-    red_led = GpioLED(settings.led_red_pin)
-    green_led = GpioLED(settings.led_green_pin)
+
+  if settings.have_button or settings.have_leds:
+    # explicitly set pin factory
+    # https://gpiozero.readthedocs.io/en/stable/api_pins.html
+    # https://gpiozero.readthedocs.io/en/stable/api_pins.html#gpiozero.pins.lgpio.LGPIOPin
+    from gpiozero.pins.lgpio import LGPIOFactory
+    from gpiozero import Device
+    factory = LGPIOFactory(chip=0)
+
+    if settings.have_button:
+      gpio_btn_pin = GpioButton(pin=settings.button_pin, bounce_time=0.01, pin_factory=factory)
+      gpio_btn_pin.when_pressed = glados_click
+
+    if settings.have_leds:
+      red_led = GpioLED(settings.led_red_pin, pin_factory=factory)
+      green_led = GpioLED(settings.led_green_pin, pin_factory=factory)
 
   try:
     hmqtt = Homie_MQTT(settings, on_mqtt_msg)
   except:
     log.fail('failed mqtt setup')
     exit()
-  
+
   # pulse = pulsectl.Pulse('tblogin')
-    
+
   # tkroot = Tk()
   # mainwin = Toplevel(tkroot)
   # tkroot.title("tkroot")
-  
+
   mainwin = tk.Tk()
   mainwin.title("Tk TrumpyBear")
   mainwin.wm_attributes("-topmost", True)
@@ -196,7 +209,7 @@ def main():
   st.theme_use('alt')  # better than 'default', IMO
   st.configure("Menlo.TButton", font=('Menlo', 16, 'bold'),
                height=20, width=10)
-  
+
   st = ttk.Style()
   st.configure("Menlo.TRadiobutton", font=('Menlo', 12))
   st = ttk.Style()
@@ -211,11 +224,11 @@ def main():
   st = ttk.Style()
   st.configure("Menlo.TCombobox", font=('Menlo', 16),
                height=16, width=10)
-  
+
   content = ttk.Frame(mainwin)
   menu_fr = ttk.Frame(content, width=100, height=580, borderwidth=5)
   menu_fr.pack(side=tk.LEFT, expand=True)
-  
+
   st_p = 4
   if settings.have_alarm is True:
     alarm_btn = ttk.Button(menu_fr, text="Alarm", style='Menlo.TButton',
@@ -256,12 +269,12 @@ def main():
     imgT = imgT.resize((40, 70))
     imgPi = ImageTk.PhotoImage(image=imgT)
     mic_imgs.append(imgPi)
-  
+
     imgT = Image.open(f"{os_home}/images/microphone-green.png")
     imgT = imgT.resize((40, 70))
     imgPi = ImageTk.PhotoImage(image=imgT)
     mic_imgs.append(imgPi)
-    
+
     imgT = Image.open(f"{os_home}/images/microphone-orange.png")
     imgT = imgT.resize((40, 70))
     imgPi = ImageTk.PhotoImage(image=imgT)
@@ -286,15 +299,15 @@ def main():
     # mic_btn = ttk.Label(menu_fr, image = mic_imgs[micst], )
     mic_btn = ttk.Button(menu_fr, image=mic_imgs[micst], command=on_mute)
     mic_btn.grid(row=st_p + 8, rowspan=2)
-  
+
   start_panel(True)
 
   # fill in the right side panel.
   content.pack()
-  
+
   # ----- Now the screen saver panel ---
   notify_win = tk.Toplevel(mainwin)
-    
+
   # Tkinter Window Configurations
   # notify_win.wait_visibility(saver_cvs)
   notify_win.title("Tk Notify")
@@ -324,7 +337,7 @@ def main():
   saver_cvs = tk.Canvas(notify_win, background='black', borderwidth=0)
   saver_cvs.create_rectangle(0, 0, notify_width, notify_height, fill='black')
   saver_cvs.pack(expand="yes", fill="both")
- 
+
   font1 = font.Font(family=settings.font1, size=settings.font1sz[0])
   font2 = font.Font(family=settings.font2, size=settings.font2sz[0])
   font3 = font.Font(family=settings.font3, size=settings.font3sz[0])
@@ -346,10 +359,10 @@ def main():
     mainwin.lift()
     notify_win.lower(mainwin)
   log.info(f'starting mainloop fg: {mainwin.state()}, bg: {notify_win.state()}')
-  
+
   # set screensaver timer
   screen_timer_reset()
-  
+
   # NOTE: mqtt messages seem to arrive just fine. Even though we
   # don't seem to accomodate them
   log.info('starting mqtt loop')
@@ -357,7 +370,7 @@ def main():
   delay_thread = threading.Timer(1, delayed_setup)
   delay_thread.start()
   mainwin.mainloop()
-  
+
   while True:
     time.sleep(10)
 
@@ -377,8 +390,8 @@ def delayed_setup():
   # hmqtt.client.publish(settings.hspc_pub, "off")
   # ask the bridge process for a list of llm model names
   llm_models_list()
- 
-  
+
+
 def llm_models_list():
   global hmqtt, log, settings
   # cmd the bridge to send a list of llm model names
@@ -386,7 +399,7 @@ def llm_models_list():
   hmqtt.client.publish(settings.hspc_pub[0], '{"cmd": "llm_models"}')
   # hmqtt.client.publish(settings.hspc_pub, '{"cmd": "llm_models"}')
 
-   
+
 def screen_timer_fired():
   # when this happens we need to bring the
   # notify window to the top and
@@ -413,8 +426,8 @@ def screen_timer_fired():
     log.info(f"remove temp file {wavfp}")
     os.remove(wavfp)
   log.info(f'notify_win: {notify_win.state()} mainwin: {mainwin.state()}')
- 
- 
+
+
 # user touched/moused/keyed screen saver. Send to back
 # bring main window to top. Also set a new screen timer
 def saver_closing(event):
@@ -432,8 +445,8 @@ def saver_closing(event):
       mainwin.lift()
       notify_win.lower(mainwin)
   screen_timer_reset()
-    
-  
+
+
 def screen_timer_reset():
   global screen_thread
   if screen_thread:
@@ -441,7 +454,7 @@ def screen_timer_reset():
   screen_thread = threading.Timer(120, screen_timer_fired)
   screen_thread.start()
 
- 
+
 def saver_timer_fired():
   global saver_cvs, saver_blank_thread, scroll_thread
   saver_blank_thread = None
@@ -451,7 +464,7 @@ def saver_timer_fired():
     scroll_thread.cancel()
     scroll_thread = None
 
-  
+
 def saver_blank(secs):
   global saver_blank_thread
   if saver_blank_thread:
@@ -476,7 +489,7 @@ def pict_for(name):
   The cursor should change to busy when chatting and speaking
   Or maybe you have red and green leds - you could flash one for chatting
   Lots of possibilities.
-  
+
   Below is the RPI special device on GPIO pins
   idle = 0        # Red
   listening = 1   # Green
@@ -507,15 +520,16 @@ def show_bridge_state(st: int) -> None:
     mainwin.config(cursor="watch")
     red_led.on()
     green_led.off()
-      
-  
+
+
 def on_mqtt_msg(topic: str, payload: str) -> None:
   global log, settings, vid_widget, alarm_btn, voice_btn, laser_btn
   global login_btn, logoff_btn, turrets, mic_btn, mic_imgs, ranger_btn
   global pnl_hdr, status_hdr, msg_hdr, vlc_instance
   global saver_running, textLines, devLn, scroll_thread, devLns
+  global login_thread, login_maybe, logged_in
 
-  log.info(f'on_mqtt: {topic} {payload}')
+  log.info(f'on_mqtt-> {topic} {payload}')
   if topic == settings.hscn_sub:
     if payload == 'wake':
       wake_up()
@@ -533,6 +547,8 @@ def on_mqtt_msg(topic: str, payload: str) -> None:
         img_path = pict_for(user)
         log.info(f"{user} logged in")
         status_hdr['text'] = f'{user} has logged in'
+        # Set a global logged_in state
+        logged_in = True
         # change the front picture
         set_picture(img_path)
         # hide or show the correct buttons
@@ -584,7 +600,30 @@ def on_mqtt_msg(topic: str, payload: str) -> None:
         # @tgt_msg.text = hsh['msg']
         msg_hdr['text'] = hsh['msg']
         pass
-      
+
+  elif str(topic) == settings.sayodev:
+    log.info(f'processing sayodev payload {payload}')
+    if payload in ['left', 'right', 'start', 'halt']:
+      # did frigate recently recognize someone? log'em in.
+      if login_thread is not None:
+        login_thread.cancel()
+        login_thread = None
+        start_login_for(login_maybe)
+      else:
+        # TODO convert to events and send to the state machine
+        pass
+  elif topic == settings.fc_frigate:
+    dt = json.loads(payload)
+    log.info(f'processing frigate payload {dt}')
+    if dt.get('camera', None) == settings.from_camera and dt.get('name', None) is not None:
+      # we have a face detected, wait for a button press
+      if login_thread is None:
+        login_thread = threading.Timer(60, no_frigate_face)
+        login_maybe = None
+        login_thread.start()
+      # Keep name for later check at button press
+      login_maybe = dt['name']
+      log.info(f'setting login_maybe = {login_maybe}, login_thread: {login_thread}')
   elif topic == settings.htrkv_sub:
     log.info(f"got {topic} => {payload}")
     hsh = json.loads(payload)
@@ -666,20 +705,79 @@ def on_mqtt_msg(topic: str, payload: str) -> None:
         displayLines(0, devLns, textLines)
       else:
         displayLines(0, devLns, textLines)
-    # Display msg in bottom panel ?
+  elif topic == settings.sayodev:
+    log.info(f'processing sayodev payload {payload}')
+    if ['left', 'right', 'start', 'halt'].contains(payload):
+      if login_thread is not None:
+        login_thread.cancel()
+        login_thread = None
+        start_login_for(login_maybe)
+  elif topic == settings.fc_frigate:
+    dt = json.loads(payload)
+    log.info(f'processing frigate payload {dt}')
+    if dt['camera'] == settings.from_camera and dt['name'] is not None:
+      # our camera has a face detected, wait for a button press
+      log.info(f'new thread for {name}??')
+      if login_thread is None:
+        login_thread = threading.Timer(60, no_frigate_face)
+        login_maybe = None
+        login_thread.start()
+        log.info(f'start frigate login thread')
+      # Keep name for later check at button press time
+      login_maybe = dt['name']
+  else:
+    log.info(f'not matched: {topic} => {payload}')
 
-          
+def start_login_for(name: str) -> None:
+    global login_maybe, login_thread
+    # if we have a name, then we can start the login process
+    log.info(f'start_login_for: {name}')
+    if name is not None:
+        if login_thread is not None:
+            login_thread.cancel()
+        no_frigate_face()
+        # and change the status header
+        log.info(f'start_login_for {name}')
+        status_hdr['text'] = f"Login for {name}"
+        dt = {'cmd': 'login', "face": name}
+        hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt), 1, False)
+
+
+def no_frigate_face():
+  global login_thread, login_maybe
+  # Timer expired, no face detected
+  login_thread = None
+  login_maybe = None
+
+# Should be named begin_login ?
+# Called when the GUI 'Login' button is pressed.
 def on_login():
   global hmqtt, settings
   global menu_fr, alarm_btn, voice_btn, laser_btn, login_btn, logoff_btn
   global panel_fr, title, subtitle, pnl_middle, message
+  global login_thread, login_maybe
   print("logging in")
-  # turn on the lamp
-  hmqtt.client.publish(settings.hscn_pub, "awake", 1, False)
-  time.sleep(1)   # enough time to turn on the lamp?
-  dt = {'cmd': 'login'}
-  hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt), 1, False)
+  # Is there a frigate face recog to process?
+  if login_thread is not None:
+    # cancel any previous login thread
+    login_thread.cancel()
+    login_thread = None
+    name = login_maybe
+    no_frigate_face()
+    # and change the status header
+    log.info(f'start_login_for {name}')
+    status_hdr['text'] = f"Login for {name}"
+    wake_up()
+    dt = {'cmd': 'login', "face": name}
+    hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt), 1, False)
+  else:
+    # turn on the lamp
+    wake_up()
+    time.sleep(1)   # enough time to turn on the lamp for picture taking
+    dt = {'cmd': 'login'}
+    hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt), 1, False)
   screen_timer_reset()
+
 
 
 # async response from trumpy.py will arrive and
@@ -687,6 +785,7 @@ def on_login():
 def on_logoff():
   global menu_fr, alarm_btn, voice_btn, laser_btn, login_btn, logoff_btn
   global ranger_btn, panel_fr, status_hdr, mic_muted, mic_btn, settings, hmqtt
+  global logged_in, login_thread, login_maybe
   print("logging off")
   lamp_off()
   start_panel()
@@ -707,7 +806,12 @@ def on_logoff():
   topic = settings.hspc_pub[0]
   hmqtt.client.publish(topic, "off")
   mic_muted = True
-  
+  logged_in = False
+  if login_thread is not None:
+    login_thread.cancel()
+    login_thread = None
+  login_maybe = None
+
 
 def set_picture(img_path):
   global panel_fr, center_img, pnl_middle
@@ -716,7 +820,7 @@ def set_picture(img_path):
   center_img = ImageTk.PhotoImage(image=img1)
   pnl_middle['image'] = center_img
 
-  
+
 def home_panel() -> ttk.Label:
   global panel_fr, center_img, pnl_middle, os_home
   img1 = Image.open(f"{os_home}/images/IF-Garden.jpg")
@@ -729,15 +833,16 @@ def home_panel() -> ttk.Label:
 def wake_up():
   # run Hubitat lighting/Muting automations
   global log, settings, hmqtt
-  log.info("Wake up runs")
-  hmqtt.client.publish(settings.hscn_pub, "awake", 1, False)
+  if settings.use_homeauto:
+    log.info("send awake")
+    hmqtt.client.publish(settings.hscn_pub, "awake", 1, False)
 
 
 # Trumpy Bear needs to show, Screen saver hides.
 def monitor_wake():
   global log, settings, hmqtt, saver_running
   log.info("waking monitor")
-  saver_closing()
+  saver_closing(None)
   # saver_running = False
   # os.system('DISPLAY=:0; xset s reset')
 
@@ -768,7 +873,7 @@ def do_register():
   hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
   status_hdr['text'] = "Registering"
 
- 
+
 def start_panel(first=False):
   global panel_fr, center_img, pnl_middle, content
   global pnl_hdr, status_hdr, msg_hdr
@@ -779,7 +884,7 @@ def start_panel(first=False):
 
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
   panel_fr.pack(side=tk.RIGHT, expand=True)
-  
+
   pnl_hdr = ttk.Label(panel_fr, text="Trumpy Bear", font="Menlo 34")
   pnl_hdr.grid(column=2, columnspan=15, row=1)
   status_hdr = ttk.Label(panel_fr, text="Please Login", font="Menlo 26")
@@ -787,7 +892,7 @@ def start_panel(first=False):
 
   pnl_middle = home_panel()
   pnl_middle.grid(row=3, column=1, padx=20, pady=20, rowspan=14, columnspan=16)
-  
+
   # bottom is a horizontal flow
   f1 = ttk.Frame(panel_fr)
   f1.grid(rows=5, columns=8, sticky=tk.S)
@@ -811,8 +916,8 @@ it will stop.")
   lbl.grid(row=1, column=0, columnspan=12)
   btn = ttk.Button(panel_fr, text="Turn Off", style='Menlo.TButton')
   btn.grid(row=2, column=2)
-  
-  
+
+
 def start_mycroft():
   global hmqtt, settings
   dt = {'cmd': 'mycroft'}
@@ -825,8 +930,8 @@ def start_glados():
   global hmqtt, settings
   hmqtt.client.publish(settings.hspc_pub[0], 'chat')
   screen_timer_reset()
- 
-  
+
+
 def stop_glados():
   # good luck stopping her
   # talk to the bridge, not trumpy bear
@@ -849,8 +954,29 @@ def quit_glados():
 
 
 def glados_click():
-  global glados_initialized
-  if glados_initialized is False:
+  global glados_initialized, login_thread, login_maybe, logged_in
+  '''
+  Clicks mean different things depending on whether we are logged in or not.
+  If we are not logged in then click begins that process
+  Has frigate and friends detected a named face? login_thread will be not null
+  If so, finish the login using the name from frigate
+  Else if a frigate face scheme is not involved and glados is not started
+  them bring up the glados gui panel on the screen
+  else stop and restart glados (the user clicked in an attempt to stop glados from
+  speaking anymore - it might work.)
+  '''
+  log.info('glados_click: GPIO Button clicked')
+  monitor_wake()
+  if logged_in is False:
+    name = None
+    log.info(f'glados_click, not logged in, login_thread: {login_thread}')
+    if login_thread is not None:
+      name = login_maybe
+      login_thread.cancel()
+      login_thread = None
+      start_login_for(name)
+    # will finish login somewhere in the trumbybear/tblogin events and threads
+  elif glados_initialized is False:
     glados_initialized = True
     glados_panel()
   else:
@@ -889,7 +1015,7 @@ Click mic button")
     jstr = json.dumps({"cmd": "llm_default", "model": llm_name})
     # TODO another fix about that hspc_pub tuple issue
     hmqtt.client.publish(settings.hspc_pub[0], jstr, 1, False)
-    
+
   lbl3 = ttk.Label(panel_fr, style="MenloSm.TLabel",
                    text="LLM Model:")
   lbl3.grid(row=4, column=1)
@@ -897,7 +1023,7 @@ Click mic button")
   llm_combobx.grid(row=4, column=2, columnspan=2)
   llm_combobx.set(llm_default)
   llm_combobx.bind("<<ComboboxSelected>>", tell_bridge)
-    
+
   # text area for display of messages to/from llm. Also a scrollbar.
   msgArea = scrolledtext.ScrolledText(panel_fr,
                                       wrap=tk.WORD,
@@ -913,7 +1039,7 @@ def lamp_off():
   global hmqtt, settings
   hmqtt.client.publish(settings.hscn_pub, "closing", 1, False)
 
- 
+
 def lasers_off():
   global hmqtt, settings, turrets
   for tur in turrets:
@@ -936,7 +1062,7 @@ def on_mute():
     hmqtt.client.publish(topic, "on")
     mic_muted = True
 
-  
+
 # hackish but why bother to do better?
 def do_exec():
   global turrents, hmqtt, laser_cmds, lb, lb3, lb4, lb5, lb6, lb7, cbox1, cbox2
@@ -951,7 +1077,7 @@ def do_exec():
     dt['length'] = int(lb6.get())
   elif cmd == 'circle':
     dt['radius'] = int(lb7.get())
-    
+
   payload = json.dumps(dt)
   if cbox1.get() is True:
       hmqtt.client.publish(f"{turrets[0]['topic']}/set", payload, 1, False)
@@ -973,10 +1099,10 @@ def laser_panel():
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
   panel_fr.pack(side=tk.RIGHT, expand=True)
-  
+
   lbl1 = ttk.Label(panel_fr, text="Exercise The Lasers", style="MenloLg.TLabel")
   lbl1.grid(row=1, column=1, columnspan=2)
-  
+
   lbl2 = ttk.Label(panel_fr, text='Routine:', style="MenloMd.TLabel")
   lbl2.grid(row=2, column=1)
   t = []
@@ -986,22 +1112,22 @@ def laser_panel():
   lb.state(["readonly"])
   lb.set("Horizontal Sweep")
   lb.grid(row=3, column=1, sticky=ttk.W)
-  
+
   cbox1 = ttk.BooleanVar(value=False)
   cbx1 = ttk.Checkbutton(panel_fr, text=turrets[0]['name'], style='Menlo.TCheckbutton',
                          variable=cbox1)
   cbx1.grid(row=4, column=1)
-  
+
   cbox2 = ttk.BooleanVar(value=False)
   cbx2 = ttk.Checkbutton(panel_fr, text=turrets[1]['name'],
                          style='Menlo.TCheckbutton',
                          variable=cbox2)
   cbx2.grid(row=5, column=1)
-  
+
   exec_btn = ttk.Button(panel_fr, text="Execute", style='Menlo.TButton',
                         command=do_exec)
   exec_btn.grid(row=7, column=1)
-  
+
   # column 3 empty
   # column 4:
   lbl3 = ttk.Label(panel_fr, text="Time allowed:", style="MenloMd.TLabel")
@@ -1010,21 +1136,21 @@ def laser_panel():
   lbl3.grid(row=2, column=4)
   lb3.grid(row=3, column=4)
   lb3.set('2')
-  
+
   lbl4 = ttk.Label(panel_fr, text="Count:", style="MenloMd.TLabel")
   lb4 = ttk.Combobox(panel_fr, values=('1', '2', '3', '4', '6', '8'),
                      style='Menlo.TCombobox')
   lbl4.grid(row=4, column=4)
   lb4.grid(row=5, column=4)
   lb4.set('2')
-  
+
   lbl5 = ttk.Label(panel_fr, text="Lines (sweeps)", style="MenloMd.TLabel")
   lb5 = ttk.Combobox(panel_fr, values=('4', '5', '7', '9'),
                      style='Menlo.TCombobox')
   lbl5.grid(row=6, column=4)
   lb5.grid(row=7, column=4)
   lb5.set('5')
-  
+
   lbl6 = ttk.Label(panel_fr, text="Length (diamonds)", style="MenloMd.TLabel")
   lb6 = ttk.Combobox(panel_fr, values=('10', '15', '20', '30', '50'),
                      style='Menlo.TCombobox')
@@ -1038,7 +1164,7 @@ def laser_panel():
   lbl7.grid(row=10, column=4)
   lb7.grid(row=11, column=4)
   lb7.set('20')
-  
+
   btn_row = 9
   lamp_btn = ttk.Button(panel_fr, text="Lamp Off", style='Menlo.TButton',
                         command=lamp_off)
@@ -1064,7 +1190,7 @@ def manual_panel():
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
   panel_fr.pack(side=tk.RIGHT, expand=True)
-  
+
   def set_pwr(idx):
     global hmqtt, settings, turrets
     if idx > 0:
@@ -1084,7 +1210,7 @@ def manual_panel():
     # a frame for the turret name and radio buttons
     rad_fr = ttk.Frame(panel_fr)
     rad_fr.grid(row=1, column=side + 1)
-    
+
     lbl = ttk.Label(rad_fr, text=tur['name'], width=12, style="MenloMd.TLabel")
     lbl.grid(row=1, column=2)
     plbl = ttk.Label(rad_fr, text="Power", width=5, style="MenloMd.TLabel")
@@ -1102,14 +1228,14 @@ def manual_panel():
     rd_fr.grid(row=2, column=2)
     s1 = ttk.Separator(panel_fr, orient=tk.HORIZONTAL)
     s1.grid(row=2, column=1, columnspan=3, sticky='ew')
-    
+
     pan = TurretSlider(panel_fr, "Pan", 200, tur, hmqtt)
     # pan.frame.grid(row=3,column=1+side)
     pan.grid(row=3, column=1 + side)
-    
+
     s2 = ttk.Separator(panel_fr, orient=tk.HORIZONTAL)
     s2.grid(row=4, column=1, columnspan=3, sticky='ew')
-    
+
     tilt = TurretSlider(panel_fr, "Tilt", 200, tur, hmqtt)
     # tilt.frame.grid(row=5,column=1+side)
     tilt.grid(row=5, column=1 + side)
@@ -1123,7 +1249,7 @@ def ranger_panel():
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
   panel_fr.pack(side=tk.RIGHT, expand=True)
-  
+
   lbl1 = ttk.Label(panel_fr, text="Ranger Calibration",
                    style="MenloMd.TLabel")
   lbl1.grid(row=1, column=1)
@@ -1146,24 +1272,24 @@ def ranger_panel():
                                style='Menlo.TCombobox')
   ranger_scale_fld.grid(row=4, column=2)
   ranger_scale_var = "0.4"
-  
+
   l1 = ttk.Label(panel_fr, text="Computed distance: ", style="MenloMd.TLabel")
   l1.grid(row=5, column=1)
-  
+
   ranger_calib_fld = ttk.Label(panel_fr, text="000", style="MenloMd.TLabel")
   ranger_calib_fld.grid(row=5, column=2, columnspan=5, sticky=tk.S)
-  
+
   # bottom is a horizontal flow
   f1 = ttk.Frame(panel_fr)
   f1.grid(rows=5, columns=8, sticky=tk.S)
- 
+
   def do_calib():
     dt = {'cmd': 'ranger_test'}
     # TODO delay and distance aren't really needed by trumpybear/zmqtracker
     dt['delay'] = int(cb2.get())
     dt['distance'] = int(1)
     hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
-      
+
   btn = ttk.Button(panel_fr, text="Begin", style="Menlo.TButton",
                    command=do_calib)
   btn.grid(row=7, column=2)
@@ -1177,7 +1303,7 @@ def calibrate_panel():
   panel_fr.destroy()
   panel_fr = ttk.Frame(content, width=700, height=580, borderwidth=5)
   panel_fr.pack(side=tk.RIGHTRIGHT, expand=True)
-  
+
   lbl1 = ttk.Label(panel_fr, text="Calibration writes a video file!\n\
 Camera must be trumpybear owned!",
                    style="MenloMd.TLabel")
@@ -1193,7 +1319,7 @@ Camera must be trumpybear owned!",
                      style='Menlo.TCombobox')
   cb2.set('10')
   cb2.grid(row=3, column=2)
-  
+
   def do_calib():
     dt = {'cmd': 'calib'}
     dt['time'] = int(cb2.get())
@@ -1221,7 +1347,7 @@ def tracking_panel():
   vid_fr.grid(row=3, column=1, padx=20, pady=20, rowspan=14, columnspan=16)
   h = vid_fr.winfo_id()
   vid_widget.set_xwindow(h)
-  
+
   # bottom is a horizontal flow
   f1 = ttk.Frame(panel_fr)
   f1.grid(rows=5, columns=8, sticky=ttk.S)
@@ -1234,21 +1360,21 @@ def tracking_panel():
     media = vlc_instance.media_new("images/fma.mp4")
     vid_widget.set_media(media)
     vid_widget.play()
-    
+
   test_btn = ttk.Button(f1, text="Test", style="MenloButton.TButton",
       command=vid_test)
   test_btn.grid(row=1, column=0)
   '''
- 
+
   def send_trk():
     dt = {'cmd': 'track', 'debug': False, 'test': True}
     hmqtt.client.publish(settings.hcmd_pub, json.dumps(dt))
     log.info(f'sending {dt}')
-            
+
   btn = ttk.Button(f1, text="Track Me", style="MenloButton.TButton",
                    command=send_trk)
   btn.grid(row=1, column=1)
-  
+
 
 #
 # ------------------------Screensaver/notify -------
