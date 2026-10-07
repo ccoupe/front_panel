@@ -12,6 +12,6 @@ pyaudio
 ollama
 gpiozero
 lgpio
-pillow
+Pillow==11.2.1
 
 
